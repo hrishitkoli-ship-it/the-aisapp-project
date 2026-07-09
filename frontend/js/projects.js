@@ -464,10 +464,16 @@
       function selectProject(id) {
         setCurrentProjectId(id);
         document.dispatchEvent(new CustomEvent('projectselected', { detail: { projectId: id } }));
+        // Re-render so the "Current" badge reflects the new selection
+        // immediately, rather than waiting for some unrelated action
+        // (create/regenerate/delete) to trigger the next refresh().
+        refresh();
       }
 
       function refresh() {
-        renderProjectList(mountEl, listEl, getCurrentProjectId(), {
+        // Returned so callers -- including init() below -- can await
+        // the first paint instead of resolving before data has loaded.
+        return renderProjectList(mountEl, listEl, getCurrentProjectId(), {
           onSelect: selectProject,
           onRegenerate: (project) => {
             confirmDestructive({
@@ -497,7 +503,7 @@
         });
       }
 
-      refresh();
+      return refresh();
     },
 
     // Exposed for the app shell / router (Session 1) to query without
