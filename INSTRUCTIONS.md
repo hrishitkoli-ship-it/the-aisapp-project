@@ -170,6 +170,74 @@ Audit, don't rebuild — the backend patterns are already good. Focus on:
   top of the current version, and re-submit. Never `force: true` without
   understanding what you'd be overwriting.
 
+## Session Ledger
+
+Running record of what's actually landed, kept up to date by whichever
+session last touched something. Not a task list (that's the Lane
+assignments section above) — this is "what shipped," so a session
+starting cold — or the human checking in from a phone — doesn't have to
+diff commit history to know current state.
+
+### Session 3 — Project Management UI + onboarding
+**Status: shipped.** `frontend/js/projects.js` + `frontend/css/projects.css`.
+Create/list/switch/regenerate/delete, token-reveal modal (shown once,
+mirrors GitHub PAT UX), destructive-action confirms, PWA install hint.
+Also authored the placeholder `frontend/index.html` (see that file's own
+header comment — Session 1 owns replacing it) purely to unblock the
+SPA-fallback 500 documented in `KNOWN_ISSUES.md`.
+
+### Session 4 — Security & hardening review
+**Status: shipped.** Audited `fileOps.js`/`store.js` path-safety, found
+and fixed the `projectDir()` traversal gap on the DELETE route (see
+`db/store.js` header comment — confirmed via isolated PoC, not
+theoretical). Confirmed token comparison is constant-time throughout.
+
+### Session 5 — Testing, docs, and integration
+**Status: shipped.** Full route smoke test (`SESSION5_TEST_REPORT.md`),
+conflict-detection end-to-end verification, confirmed the AI→approve
+permission boundary genuinely 404s rather than 403s. Two low-priority
+findings logged (README gap, non-encoded traversal not logged — both
+expected behavior, not bugs).
+
+### Session 2 — Session Roster + Instructions pages
+**Status: shipped.** `frontend/js/roster.js`, `frontend/js/instructions.js`,
+`frontend/js/activity.js` (shared component), `frontend/css/instructions-roster.css`.
+
+- Roster: strictly read-only per spec, no write UI added to compensate
+  for the backend having none. Sessions sorted active-first, stale
+  (>10min silent) pushed down. Nested task-queue rendering with
+  priority badges.
+- Instructions: debounced notes autosave, functionality list, and the
+  Function Assignment Gate — Approve/Reject buttons exist *only* on
+  this page and call *only* the human-facing routes. No client-side
+  permission check added on top, because the backend route boundary
+  (approve doesn't exist on `aiRouter` at all) already is the
+  boundary — duplicating it client-side would just be more surface
+  area to keep in sync.
+- Activity timeline: shared across pages, `security_alert` entries
+  rendered distinctly (icon + tag + red surface) so a human skimming
+  a long feed doesn't have to read every row to notice one. Polling
+  pauses on `document.hidden`, resumes + refreshes on return.
+
+Verified against a live local server (not just written): seeded real
+sessions/requests/assignments through actual API calls, triggered a
+genuine `security_alert` via an actual encoded-traversal attempt,
+clicked the real Approve button and confirmed via separate `curl` that
+the write persisted and got logged — not just that the DOM updated.
+
+Still open from Session 2's original scope: none. Lane complete.
+
+### Sessions 1 — Frontend Core (Workspace + file tree UI)
+**Status: not started.** This is the current gap — `frontend/index.html`
+is still Session 3's unblock-only placeholder (see that file's header).
+No service worker, no manifest, no file tree/editor, no router. Everything
+Session 2 built (`roster.js`, `instructions.js`) is written as a
+standalone `init(mountEl, projectId)` module specifically so Session 1
+can mount it from whatever router it builds without needing to know
+Session 2's internals — see the "Public API" note at the top of each file.
+
+---
+
 ---
 
 ## Definition of done for the whole project
