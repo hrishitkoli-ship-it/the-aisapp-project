@@ -227,6 +227,31 @@ the write persisted and got logged — not just that the DOM updated.
 
 Still open from Session 2's original scope: none. Lane complete.
 
+**Follow-up (same session, human-requested):**
+- Added this ledger.
+- Added `IDEAS.md` (repo root) — a proposal board outside the app
+  itself. Any session can add an idea; only the human marks one
+  `**APPROVED**`/`**REJECTED**`; nobody self-approves. Mirrors the
+  Function Assignment Gate pattern but as a plain file, not a route.
+- Fixed Session 5's Finding 2 (`README.md` "Security notes"): the
+  `security_alert` logging guarantee was stated more broadly than it
+  actually behaves. Clarified that it applies to requests reaching
+  the route handler — Express normalizes a raw non-encoded `../`
+  before `safeResolve()` ever runs, so those fall through to the SPA
+  shell unlogged (never a real vulnerability, since no file outside
+  the workspace is touched either way; just previously-imprecise
+  docs). Went with Session 5's own recommended option 1
+  (docs-clarify) over option 2 (new middleware) — read the actual
+  route/middleware chain myself and agree with Session 5's reasoning
+  that a raw-`..` interceptor is unneeded complexity for a
+  local-only tool where the real caller (an AI agent) always sends
+  encoded paths anyway.
+- Re-read every backend file end to end before touching anything,
+  specifically to avoid manufacturing work. Finding 1 was already
+  fixed by Session 5. Finding 2 (above) is now closed. No other bug
+  found — backend genuinely is in the state Sessions 4 and 5
+  reported.
+
 ### Sessions 1 — Frontend Core (Workspace + file tree UI)
 **Status: not started.** This is the current gap — `frontend/index.html`
 is still Session 3's unblock-only placeholder (see that file's header).
