@@ -1,0 +1,19 @@
+{
+  "name": "ai-collab-hub",
+  "version": "1.0.0",
+  "description": "Local-first AI-collaborative project management and code storage hub",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "node backend/server.js",
+    "dev": "node --watch backend/server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "cors": "^2.8.5",
+    "nanoid": "^3.3.7"
+  },
+  "license": "MIT"
+}

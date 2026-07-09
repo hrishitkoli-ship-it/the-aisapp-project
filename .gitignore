@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Runtime data -- every user's actual projects/files/tokens live here.
+# This is generated at runtime (backend/db/store.js auto-creates it),
+# and must never be committed: it's local, per-device user data, not
+# source code, and could contain a project's real (hashed) tokens.
+projects/*
+!projects/.gitkeep
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/
+.idea/
+
+# Env files (if ever introduced -- none required by this app today)
+.env
+.env.local
