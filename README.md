@@ -105,6 +105,18 @@ curl -X POST http://<host>:7077/api/ai/<projectId>/sessions/session-2/requests \
   -H "Content-Type: application/json" \
   -d '{"message":"Need a projectile entity system for the potato cannon"}'
 
+# Update your session's current task / status (call this as your work progresses)
+curl -X PATCH http://<host>:7077/api/ai/<projectId>/sessions/<sessionId> \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"currentTask":"Building the projectile entity","status":"active"}'
+
+# Mark a queued task request as done once you've handled it
+curl -X PATCH http://<host>:7077/api/ai/<projectId>/sessions/<sessionId>/requests/<requestId> \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"status":"done"}'
+
 # Propose (not execute) a function assignment -- stays pending until a human approves it in the UI
 curl -X POST http://<host>:7077/api/ai/<projectId>/instructions/assignments \
   -H "Authorization: Bearer <token>" \
