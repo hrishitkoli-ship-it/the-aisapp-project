@@ -1,0 +1,317 @@
+/**
+ * projects.css
+ * ------------------------------------------------------------------
+ * Session 3 lane. All selectors prefixed `aihub-` so this can be
+ * dropped into Session 1's shell without collisions. Dark theme by
+ * default since this is a "run it locally, look at it on your phone
+ * a lot" tool -- matches the screenshot of the GitHub app UI this
+ * project's owner already uses.
+ *
+ * No CSS framework, no preprocessor -- see INSTRUCTIONS.md
+ * architecture rule #1 (no build step).
+ * ------------------------------------------------------------------
+ */
+
+:root {
+  --aihub-bg: #0d0d0f;
+  --aihub-surface: #17171a;
+  --aihub-surface-raised: #1f1f23;
+  --aihub-border: #2a2a2e;
+  --aihub-text: #e8e8ea;
+  --aihub-text-dim: #9a9aa0;
+  --aihub-accent: #4d8dff;
+  --aihub-danger: #ff5c5c;
+  --aihub-danger-dim: #4a2020;
+  --aihub-success: #4ade80;
+  --aihub-radius: 10px;
+}
+
+.aihub-page-title {
+  font-size: 1.4rem;
+  font-weight: 600;
+  margin: 0 0 16px;
+  color: var(--aihub-text);
+}
+
+/* ---- Install hint ---- */
+
+.aihub-install-hint {
+  margin-bottom: 16px;
+}
+
+.aihub-install-hint-text {
+  font-size: 0.85rem;
+  color: var(--aihub-text-dim);
+  background: var(--aihub-surface);
+  border: 1px solid var(--aihub-border);
+  border-radius: var(--aihub-radius);
+  padding: 10px 14px;
+  margin: 0;
+}
+
+/* ---- Create form ---- */
+
+.aihub-create-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--aihub-surface);
+  border: 1px solid var(--aihub-border);
+  border-radius: var(--aihub-radius);
+  padding: 14px;
+  margin-bottom: 20px;
+}
+
+.aihub-input {
+  background: var(--aihub-surface-raised);
+  border: 1px solid var(--aihub-border);
+  border-radius: 8px;
+  color: var(--aihub-text);
+  padding: 10px 12px;
+  font-size: 1rem;
+  font-family: inherit;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.aihub-input:focus {
+  outline: none;
+  border-color: var(--aihub-accent);
+}
+
+.aihub-textarea {
+  resize: vertical;
+  min-height: 44px;
+}
+
+/* ---- Buttons ---- */
+
+.aihub-btn {
+  background: var(--aihub-surface-raised);
+  border: 1px solid var(--aihub-border);
+  color: var(--aihub-text);
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 0.95rem;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.aihub-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.aihub-btn--primary {
+  background: var(--aihub-accent);
+  border-color: var(--aihub-accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.aihub-btn--danger {
+  background: var(--aihub-danger);
+  border-color: var(--aihub-danger);
+  color: #fff;
+  font-weight: 600;
+}
+
+.aihub-btn--subtle {
+  background: transparent;
+  border-color: var(--aihub-border);
+  color: var(--aihub-text-dim);
+  font-size: 0.85rem;
+  padding: 8px 12px;
+}
+
+.aihub-icon-btn {
+  background: transparent;
+  border: 1px solid var(--aihub-border);
+  color: var(--aihub-text-dim);
+  border-radius: 8px;
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  font-size: 1rem;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.aihub-icon-btn--danger:hover,
+.aihub-icon-btn--danger:focus {
+  color: var(--aihub-danger);
+  border-color: var(--aihub-danger);
+}
+
+/* ---- Project list ---- */
+
+.aihub-project-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.aihub-project-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.aihub-project-card {
+  flex: 1;
+  text-align: left;
+  background: var(--aihub-surface);
+  border: 1px solid var(--aihub-border);
+  border-radius: var(--aihub-radius);
+  padding: 12px 14px;
+  color: var(--aihub-text);
+  font-family: inherit;
+  cursor: pointer;
+  position: relative;
+  min-width: 0; /* allow text truncation in flex child */
+}
+
+.aihub-project-card:hover,
+.aihub-project-card:focus {
+  border-color: var(--aihub-accent);
+  outline: none;
+}
+
+.aihub-project-card--current {
+  border-color: var(--aihub-accent);
+  background: var(--aihub-surface-raised);
+}
+
+.aihub-project-card-name {
+  font-weight: 600;
+  font-size: 1rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.aihub-project-card-desc {
+  font-size: 0.85rem;
+  color: var(--aihub-text-dim);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.aihub-project-card-meta {
+  font-size: 0.75rem;
+  color: var(--aihub-text-dim);
+  margin-top: 6px;
+}
+
+.aihub-badge {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: var(--aihub-accent);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.aihub-empty-state {
+  color: var(--aihub-text-dim);
+  text-align: center;
+  padding: 32px 16px;
+  font-size: 0.9rem;
+}
+
+/* ---- Status toast ---- */
+
+.aihub-status {
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  margin-bottom: 12px;
+}
+
+.aihub-status--info {
+  background: var(--aihub-surface-raised);
+  color: var(--aihub-text-dim);
+}
+
+.aihub-status--error {
+  background: var(--aihub-danger-dim);
+  color: var(--aihub-danger);
+}
+
+/* ---- Modals (token reveal + destructive confirm) ---- */
+
+.aihub-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.aihub-modal {
+  background: var(--aihub-surface);
+  border: 1px solid var(--aihub-border);
+  border-radius: 14px;
+  padding: 20px;
+  max-width: 420px;
+  width: 100%;
+}
+
+.aihub-modal h2 {
+  margin: 0 0 10px;
+  font-size: 1.1rem;
+  color: var(--aihub-text);
+}
+
+.aihub-modal p {
+  margin: 0 0 14px;
+  font-size: 0.9rem;
+  color: var(--aihub-text-dim);
+  line-height: 1.4;
+}
+
+.aihub-modal-warning {
+  color: var(--aihub-danger) !important;
+}
+
+.aihub-token-display {
+  display: block;
+  background: var(--aihub-surface-raised);
+  border: 1px solid var(--aihub-border);
+  border-radius: 8px;
+  padding: 12px;
+  font-family: 'SF Mono', 'Roboto Mono', monospace;
+  font-size: 0.85rem;
+  color: var(--aihub-success);
+  word-break: break-all;
+  margin-bottom: 14px;
+  user-select: all;
+}
+
+.aihub-token-display:focus {
+  outline: 2px solid var(--aihub-accent);
+}
+
+.aihub-modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+@media (max-width: 480px) {
+  .aihub-modal-actions {
+    flex-direction: column-reverse;
+  }
+  .aihub-modal-actions .aihub-btn {
+    width: 100%;
+  }
+}
