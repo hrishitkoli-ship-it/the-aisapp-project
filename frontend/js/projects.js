@@ -201,11 +201,16 @@
   function confirmDestructive({ title, body, confirmLabel, onConfirm }) {
     const overlay = h('div', { class: 'aihub-modal-overlay' });
 
-    const cancelBtn = h(
-      'button',
-      { class: 'aihub-btn', onclick: () => overlay.remove() },
-      'Cancel'
-    );
+    function close() {
+      document.removeEventListener('keydown', onKeydown);
+      overlay.remove();
+    }
+
+    function onKeydown(e) {
+      if (e.key === 'Escape') close();
+    }
+
+    const cancelBtn = h('button', { class: 'aihub-btn', onclick: close }, 'Cancel');
 
     const confirmBtn = h(
       'button',
@@ -216,7 +221,7 @@
           confirmBtn.textContent = 'Working…';
           try {
             await onConfirm();
-            overlay.remove();
+            close();
           } catch (err) {
             confirmBtn.disabled = false;
             confirmBtn.textContent = confirmLabel;
@@ -234,6 +239,14 @@
     ]);
 
     overlay.appendChild(modal);
+    // Tap outside the modal cancels, same as Escape. Safe here because
+    // canceling just abandons a destructive action the user hasn't
+    // confirmed yet -- unlike showTokenModal, nothing is lost. That
+    // modal intentionally has neither of these affordances.
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) close();
+    });
+    document.addEventListener('keydown', onKeydown);
     document.body.appendChild(overlay);
   }
 
@@ -344,13 +357,31 @@
 
   async function renderProjectList(mountEl, listEl, currentId, callbacks) {
     clear(listEl);
+    listEl.appendChild(h('p', { class: 'aihub-loading-state' }, 'Loading projects…'));
+
     let projects;
     try {
       projects = await listProjects();
     } catch (err) {
-      listEl.appendChild(h('p', { class: 'aihub-empty-state' }, `Couldn't load projects: ${err.message}`));
+      clear(listEl);
+      const retryBtn = h(
+        'button',
+        {
+          class: 'aihub-btn aihub-btn--subtle',
+          onclick: () => renderProjectList(mountEl, listEl, currentId, callbacks),
+        },
+        'Try again'
+      );
+      listEl.appendChild(
+        h('div', { class: 'aihub-error-state' }, [
+          h('p', {}, `Couldn't load projects: ${err.message}`),
+          retryBtn,
+        ])
+      );
       return;
     }
+
+    clear(listEl);
 
     if (projects.length === 0) {
       listEl.appendChild(
