@@ -17,6 +17,35 @@ const { generateToken, hashToken } = require('../utils/tokens');
 
 const router = express.Router();
 
+/**
+ * SECURITY: store.projectDir() (called internally by getProject(),
+ * regenerate, and delete below) now throws InvalidProjectIdError for any
+ * projectId that would resolve outside PROJECTS_ROOT -- see db/store.js
+ * for the full writeup of what this closes. Every route below that reads
+ * req.params.projectId needs to catch that throw specifically and fail
+ * closed with a clean 400, instead of letting it become an unhandled
+ * 500. Mirrors how routes/files.js already catches PathSafetyError from
+ * fileOps.js's safeResolve() -- same shape, same "log it, don't just
+ * swallow it" reasoning, so a human watching the activity timeline can
+ * see someone (or something) tried to walk out of the sandbox.
+ *
+ * Best-effort only: if projectId is malicious, there is no real project
+ * whose activity.json we can safely write into (that's the whole point
+ * of the block), so this logs to the ROOT-level activity concept instead
+ * of a per-project one. There is no root activity log today -- rather
+ * than invent one for a single call site, this logs to the server
+ * console, which is the one sink that's always safe to write to
+ * regardless of what projectId contained. A future session wiring up a
+ * proper root-level security log (outside a single project) can replace
+ * this without touching the containment logic itself.
+ */
+function logBlockedProjectIdAttempt(req, action, err) {
+  console.warn(
+    `[security] Blocked a ${action} attempt with an unsafe projectId ` +
+    `(path: "${req.params.projectId}"): ${err.message}`
+  );
+}
+
 // POST /api/projects  { name, description }
 // Creates a new project folder + metadata + a fresh AI token.
 router.post('/', async (req, res) => {
@@ -68,7 +97,16 @@ router.get('/', (req, res) => {
 
 // GET /api/projects/:projectId - fetch one project's metadata (no token).
 router.get('/:projectId', (req, res) => {
-  const project = store.getProject(req.params.projectId);
+  let project;
+  try {
+    project = store.getProject(req.params.projectId);
+  } catch (err) {
+    if (err instanceof store.InvalidProjectIdError) {
+      logBlockedProjectIdAttempt(req, 'read', err);
+      return res.status(400).json({ error: 'Invalid project id.' });
+    }
+    throw err;
+  }
   if (!project) return res.status(404).json({ error: 'Project not found.' });
   res.json(stripSecret(project));
 });
@@ -77,7 +115,16 @@ router.get('/:projectId', (req, res) => {
 // Invalidates the old token immediately and returns a new raw token once.
 router.post('/:projectId/regenerate-token', async (req, res) => {
   const { projectId } = req.params;
-  const project = store.getProject(projectId);
+  let project;
+  try {
+    project = store.getProject(projectId);
+  } catch (err) {
+    if (err instanceof store.InvalidProjectIdError) {
+      logBlockedProjectIdAttempt(req, 'regenerate-token', err);
+      return res.status(400).json({ error: 'Invalid project id.' });
+    }
+    throw err;
+  }
   if (!project) return res.status(404).json({ error: 'Project not found.' });
 
   const rawToken = generateToken();
@@ -101,10 +148,37 @@ router.post('/:projectId/regenerate-token', async (req, res) => {
 // DELETE /api/projects/:projectId - remove a project entirely.
 router.delete('/:projectId', async (req, res) => {
   const { projectId } = req.params;
-  const project = store.getProject(projectId);
+  let project;
+  try {
+    project = store.getProject(projectId);
+  } catch (err) {
+    if (err instanceof store.InvalidProjectIdError) {
+      logBlockedProjectIdAttempt(req, 'delete', err);
+      return res.status(400).json({ error: 'Invalid project id.' });
+    }
+    throw err;
+  }
   if (!project) return res.status(404).json({ error: 'Project not found.' });
 
-  fs.rmSync(store.projectDir(projectId), { recursive: true, force: true });
+  // store.projectDir() throws InvalidProjectIdError under the same
+  // condition as the getProject() call above, so in practice this can't
+  // hit the catch below without the earlier one having already caught
+  // it first -- but this is the exact call site the Session 4 audit
+  // found actually vulnerable (unsuffixed, unlike getProject()'s
+  // internal jsonPath() call), so it gets its own explicit guard rather
+  // than relying on that being true forever as this file changes.
+  let dir;
+  try {
+    dir = store.projectDir(projectId);
+  } catch (err) {
+    if (err instanceof store.InvalidProjectIdError) {
+      logBlockedProjectIdAttempt(req, 'delete', err);
+      return res.status(400).json({ error: 'Invalid project id.' });
+    }
+    throw err;
+  }
+
+  fs.rmSync(dir, { recursive: true, force: true });
   await store.removeProjectFromIndex(projectId);
   res.json({ success: true });
 });

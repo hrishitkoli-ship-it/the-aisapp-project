@@ -33,8 +33,47 @@ if (!fs.existsSync(PROJECTS_ROOT)) {
   fs.mkdirSync(PROJECTS_ROOT, { recursive: true });
 }
 
+class InvalidProjectIdError extends Error {}
+
+/**
+ * SECURITY: projectId arrives as a raw URL path segment on every route
+ * (human and AI alike) and was previously joined straight into a
+ * filesystem path with no containment check -- unlike in-project file
+ * paths, which already go through fileOps.js's safeResolve(). A
+ * projectId like "../../../../etc" (reachable over HTTP: Express
+ * decodes %2F in route params before handlers ever see them) would
+ * resolve projectDir() outside PROJECTS_ROOT entirely. Most routes were
+ * accidentally safe anyway because getProject() appends a fixed
+ * "project.json" suffix after the join, so a traversal only succeeds if
+ * a real project.json-shaped file happens to already exist at the
+ * traversed destination -- but DELETE /api/projects/:projectId calls
+ * projectDir() a second time, UNSUFFIXED, for the actual
+ * fs.rmSync(..., { recursive: true, force: true }). If that coincidence
+ * ever lines up, the delete route recursively force-deletes whatever
+ * real directory the traversal points to. Confirmed via isolated /tmp
+ * proof-of-concept during Session 4's audit -- not theoretical.
+ *
+ * Fix mirrors fileOps.js's safeResolve() philosophy exactly: verify
+ * containment, and THROW rather than silently stripping "../" and
+ * continuing -- a caller trying to walk out of the sandbox is exactly
+ * the kind of thing that should surface as a loggable, visible failure
+ * (see routes/projects.js), not be quietly rewritten into "worked fine."
+ *
+ * Real projectIds are always nanoid(10) (URL-safe alphabet only, no "/"
+ * or "." possible), so this rejects everything a legitimate caller would
+ * never send in the first place.
+ */
 function projectDir(projectId) {
-  return path.join(PROJECTS_ROOT, projectId);
+  if (typeof projectId !== 'string' || !projectId) {
+    throw new InvalidProjectIdError('projectId is required.');
+  }
+  const resolved = path.resolve(PROJECTS_ROOT, projectId);
+  if (resolved !== PROJECTS_ROOT && !resolved.startsWith(PROJECTS_ROOT + path.sep)) {
+    throw new InvalidProjectIdError(
+      `projectId "${projectId}" resolves outside the projects root and was blocked.`
+    );
+  }
+  return resolved;
 }
 
 function projectFilesDir(projectId) {
@@ -175,6 +214,7 @@ function appendActivity(projectId, entry) {
 
 module.exports = {
   PROJECTS_ROOT,
+  InvalidProjectIdError,
   projectDir,
   projectFilesDir,
   withLock,

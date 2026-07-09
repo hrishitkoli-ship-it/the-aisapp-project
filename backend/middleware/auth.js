@@ -33,13 +33,39 @@ function extractBearer(req) {
 }
 
 /**
+ * SECURITY: store.getProject() can throw store.InvalidProjectIdError for
+ * a projectId that would resolve outside the projects root (see
+ * db/store.js). Both middleware functions below are the one chokepoint
+ * every route in the app passes through, so this is the highest-value
+ * place to catch it -- confirmed via Session 4's audit that this was
+ * previously an unhandled throw (500 + stack trace) for any malformed
+ * projectId hitting ANY route, not just the ones audited directly.
+ */
+function safeGetProject(req, res, projectId) {
+  try {
+    return { project: store.getProject(projectId) };
+  } catch (err) {
+    if (err instanceof store.InvalidProjectIdError) {
+      console.warn(
+        `[security] Blocked a request with an unsafe projectId ` +
+        `(path: "${projectId}"): ${err.message}`
+      );
+      res.status(400).json({ error: 'Invalid project id.' });
+      return { project: null, handled: true };
+    }
+    throw err;
+  }
+}
+
+/**
  * Middleware: require a valid AI token scoped to :projectId.
  * On success, sets req.isAI = true and req.tokenValid = true.
  * On failure, responds 401/403 and does not call next().
  */
 function requireAIToken(req, res, next) {
   const { projectId } = req.params;
-  const project = store.getProject(projectId);
+  const { project, handled } = safeGetProject(req, res, projectId);
+  if (handled) return; // response already sent by safeGetProject
 
   if (!project) {
     return res.status(404).json({ error: 'Project not found.' });
@@ -73,7 +99,9 @@ function requireAIToken(req, res, next) {
  */
 function loadProjectForHuman(req, res, next) {
   const { projectId } = req.params;
-  const project = store.getProject(projectId);
+  const { project, handled } = safeGetProject(req, res, projectId);
+  if (handled) return; // response already sent by safeGetProject
+
   if (!project) {
     return res.status(404).json({ error: 'Project not found.' });
   }
