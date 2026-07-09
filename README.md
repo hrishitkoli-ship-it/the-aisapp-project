@@ -141,9 +141,18 @@ you've decided that's really what you want.
   regeneration time, the same way GitHub does it.
 - File paths from any request (human or AI) are resolved against the
   project's own workspace folder and rejected if they'd resolve outside it,
-  including percent-encoded traversal attempts. A rejected attempt is logged
-  to that project's activity timeline, tagged `security_alert`, so it's
-  visible to the human even though the request itself was blocked.
+  including percent-encoded traversal attempts (e.g. `%2e%2e%2f`). A
+  rejected attempt like this is logged to that project's activity
+  timeline, tagged `security_alert`, so it's visible to the human even
+  though the request itself was blocked. Note: this logging guarantee
+  applies to attempts that actually reach the route handler. A raw,
+  non-encoded `../` in the URL gets normalized by Express's router
+  before your handler ever sees it, so it never reaches `safeResolve()`
+  and isn't logged -- the request just falls through to the SPA
+  fallback instead, and no file outside the workspace is ever touched
+  either way. In practice this only matters for hand-crafted browser
+  requests; any AI agent calling the API sends percent-encoded paths
+  (per the examples above), which are logged as usual.
 - CORS is left open and there's no cloud auth by design -- this is meant to
   run on one device you control, not to be exposed to the open internet.
   If you do expose it beyond your own LAN, put it behind your own auth
