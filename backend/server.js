@@ -19,6 +19,7 @@ const path = require('path');
 const os = require('os');
 
 const projectsRoutes = require('./routes/projects');
+const deviceRoutes = require('./routes/device');
 const filesRoutes = require('./routes/files');
 const sessionsRoutes = require('./routes/sessions');
 const instructionsRoutes = require('./routes/instructions');
@@ -35,6 +36,7 @@ app.use(express.json({ limit: '15mb' })); // generous limit for pasted code file
 // header comment for why: the device itself is the trust boundary.
 // -----------------------------------------------------------------
 app.use('/api/projects', projectsRoutes);
+app.use('/api/device', deviceRoutes);
 app.use('/api/projects/:projectId/files', filesRoutes.humanRouter);
 app.use('/api/projects/:projectId/sessions', sessionsRoutes.humanRouter);
 app.use('/api/projects/:projectId/instructions', instructionsRoutes.humanRouter);

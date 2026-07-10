@@ -156,6 +156,63 @@ function removeProjectFromIndex(projectId) {
   });
 }
 
+/** Empties the project registry entirely. Used only by the delete-device
+ *  cascade (routes/device.js), where every project is being removed at
+ *  once -- deliberately separate from removeProjectFromIndex's
+ *  filter-one-out semantics rather than looping that per project. */
+function clearProjectIndex() {
+  return withLock('_index', () => {
+    saveProjectIndex([]);
+  });
+}
+
+// ---------------------------------------------------------------------
+// Device identity (permanent 12-char code, lives at projects/_device.json)
+//
+// One per device install, generated once on first project creation,
+// never regenerated -- only deletion removes it. Every project created
+// on this device stamps its token with this same code as a fixed
+// prefix, so a human's identity is stable across every project they
+// create, while each project still gets its own independently
+// rotatable key portion (see utils/tokens.js).
+// ---------------------------------------------------------------------
+
+const DEVICE_PATH = path.join(PROJECTS_ROOT, '_device.json');
+
+function getDevice() {
+  return readJSON(DEVICE_PATH, null);
+}
+
+function saveDevice(data) {
+  return withLock('_device', () => {
+    writeJSON(DEVICE_PATH, data);
+    return data;
+  });
+}
+
+function deleteDevice() {
+  return withLock('_device', () => {
+    if (fs.existsSync(DEVICE_PATH)) fs.rmSync(DEVICE_PATH);
+  });
+}
+
+/**
+ * Returns this device's permanent 12-char code, creating it on first
+ * use. Never regenerated once created -- only deleteDevice() removes
+ * it, and the next project created after that gets a brand new code.
+ * Takes generateDeviceCode as a parameter rather than requiring
+ * utils/tokens.js directly, to avoid a require() cycle (tokens.js has
+ * no need to depend on store.js, and shouldn't gain one just for this).
+ */
+async function getOrCreateDeviceCode(generateDeviceCode) {
+  const existing = getDevice();
+  if (existing) return existing.code;
+
+  const code = generateDeviceCode();
+  await saveDevice({ code, createdAt: new Date().toISOString() });
+  return code;
+}
+
 // ---------------------------------------------------------------------
 // Per-project accessors
 // ---------------------------------------------------------------------
@@ -221,6 +278,11 @@ module.exports = {
   listProjects,
   addProjectToIndex,
   removeProjectFromIndex,
+  clearProjectIndex,
+  getDevice,
+  saveDevice,
+  deleteDevice,
+  getOrCreateDeviceCode,
   getProject,
   saveProject,
   getSessions,

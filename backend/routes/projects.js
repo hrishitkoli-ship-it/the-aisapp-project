@@ -13,7 +13,7 @@ const express = require('express');
 const fs = require('fs');
 const { nanoid } = require('nanoid');
 const store = require('../db/store');
-const { generateToken, hashToken } = require('../utils/tokens');
+const { generateToken, generateDeviceCode, hashToken } = require('../utils/tokens');
 
 const router = express.Router();
 
@@ -56,12 +56,14 @@ router.post('/', async (req, res) => {
   }
 
   const id = nanoid(10);
-  const rawToken = generateToken();
+  const deviceCode = await store.getOrCreateDeviceCode(generateDeviceCode);
+  const rawToken = generateToken(deviceCode);
 
   const project = {
     id,
     name: name.trim(),
     description: (description || '').trim(),
+    deviceCode,
     tokenHash: hashToken(rawToken),
     createdAt: new Date().toISOString(),
     tokenGeneratedAt: new Date().toISOString(),
@@ -113,6 +115,10 @@ router.get('/:projectId', (req, res) => {
 
 // POST /api/projects/:projectId/regenerate-token
 // Invalidates the old token immediately and returns a new raw token once.
+// The device code embedded in the token is preserved -- only the key
+// portion rotates. (Projects created before the device-code split have
+// no deviceCode field; this backfills it from the device identity
+// rather than erroring, so pre-existing projects keep working.)
 router.post('/:projectId/regenerate-token', async (req, res) => {
   const { projectId } = req.params;
   let project;
@@ -127,9 +133,11 @@ router.post('/:projectId/regenerate-token', async (req, res) => {
   }
   if (!project) return res.status(404).json({ error: 'Project not found.' });
 
-  const rawToken = generateToken();
+  const deviceCode = project.deviceCode || (await store.getOrCreateDeviceCode(generateDeviceCode));
+  const rawToken = generateToken(deviceCode);
   const updated = {
     ...project,
+    deviceCode,
     tokenHash: hashToken(rawToken),
     tokenGeneratedAt: new Date().toISOString(),
   };
