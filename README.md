@@ -105,6 +105,18 @@ curl -X POST http://<host>:7077/api/ai/<projectId>/sessions/session-2/requests \
   -H "Content-Type: application/json" \
   -d '{"message":"Need a projectile entity system for the potato cannon"}'
 
+# Update your session's current task / status (call this as your work progresses)
+curl -X PATCH http://<host>:7077/api/ai/<projectId>/sessions/<sessionId> \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"currentTask":"Building the projectile entity","status":"active"}'
+
+# Mark a queued task request as done once you've handled it
+curl -X PATCH http://<host>:7077/api/ai/<projectId>/sessions/<sessionId>/requests/<requestId> \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"status":"done"}'
+
 # Propose (not execute) a function assignment -- stays pending until a human approves it in the UI
 curl -X POST http://<host>:7077/api/ai/<projectId>/instructions/assignments \
   -H "Authorization: Bearer <token>" \
@@ -128,10 +140,20 @@ you've decided that's really what you want.
   SHA-256 hash -- the raw token is shown exactly once, at creation or
   regeneration time, the same way GitHub does it.
 - File paths from any request (human or AI) are resolved against the
+- File paths from any request (human or AI) are resolved against the
   project's own workspace folder and rejected if they'd resolve outside it,
-  including percent-encoded traversal attempts. A rejected attempt is logged
-  to that project's activity timeline, tagged `security_alert`, so it's
-  visible to the human even though the request itself was blocked.
+  including percent-encoded traversal attempts (e.g. `%2e%2e%2f`). A
+  blocked attempt like this is logged to that project's activity timeline,
+  tagged `security_alert`, so it's visible to the human even though the
+  request itself was blocked. This logging guarantee applies to attempts
+  that actually reach `safeResolve()` in the route handler -- a raw,
+  non-encoded `../` in the URL gets normalized away by Express's router
+  before that ever happens, so it falls through to the SPA fallback (a
+  plain `200 index.html`) instead, and isn't logged. Either way no file
+  outside the workspace is ever touched; in practice this only matters
+  for a hand-crafted browser request, since any AI agent calling the API
+  sends percent-encoded paths (per the examples above), which are logged
+  as usual.
 - CORS is left open and there's no cloud auth by design -- this is meant to
   run on one device you control, not to be exposed to the open internet.
   If you do expose it beyond your own LAN, put it behind your own auth

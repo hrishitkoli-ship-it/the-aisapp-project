@@ -1,0 +1,285 @@
+/**
+ * base.css
+ * ------------------------------------------------------------------
+ * Session 1 lane: shared design tokens + app-shell layout.
+ *
+ * This is the canonical home for the --aihub-* custom properties.
+ * projects.css (Session 3) already consumes these same variable
+ * names -- its own :root block has been removed in favor of this
+ * file, so there is exactly one place these values are defined. The
+ * dark-mode values below are copied verbatim from what Session 3
+ * already shipped and tested; nothing there was changed, only
+ * relocated and given a light-mode sibling.
+ *
+ * Load order in index.html: base.css, then page-specific CSS
+ * (projects.css, workspace.css, etc). Custom properties on :root
+ * resolve globally regardless of link order, but keeping base.css
+ * first mirrors the dependency direction for anyone reading the HTML.
+ * ------------------------------------------------------------------
+ */
+
+:root {
+  /* ---- Dark theme (default) -- values as shipped by Session 3 ---- */
+  --aihub-bg: #0d0d0f;
+  --aihub-surface: #17171a;
+  --aihub-surface-raised: #1f1f23;
+  --aihub-border: #2a2a2e;
+  --aihub-text: #e8e8ea;
+  --aihub-text-dim: #9a9aa0;
+  --aihub-accent: #4d8dff;
+  --aihub-accent-dim: #1f3a66;
+  --aihub-danger: #ff5c5c;
+  --aihub-danger-dim: #4a2020;
+  --aihub-success: #4ade80;
+  --aihub-success-dim: #163a26;
+  --aihub-pending: #e0a030;
+  --aihub-pending-dim: #4a3a16;
+  --aihub-radius: 10px;
+
+  /* ---- Typography: system stacks only, no font CDN --------------
+     Keeps the app fully offline-capable on first load, matching its
+     own local-first premise. Differentiation between "display" and
+     "body" roles comes from weight/tracking/case, not separate
+     imported families -- see frontend-design notes for why. */
+  --aihub-font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu,
+    Cantarell, sans-serif;
+  --aihub-font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Roboto Mono', Consolas,
+    monospace;
+
+  color-scheme: dark;
+}
+
+[data-theme='light'] {
+  --aihub-bg: #f6f7f9;
+  --aihub-surface: #ffffff;
+  --aihub-surface-raised: #ececef;
+  --aihub-border: #dcdde2;
+  --aihub-text: #17171a;
+  --aihub-text-dim: #6b6b72;
+  --aihub-accent: #2f6fe0;
+  --aihub-accent-dim: #dbe7fc;
+  --aihub-danger: #d33f3f;
+  --aihub-danger-dim: #fbe3e3;
+  --aihub-success: #2f9e5c;
+  --aihub-success-dim: #e2f5e9;
+  --aihub-pending: #b5791f;
+  --aihub-pending-dim: #faedd9;
+
+  color-scheme: light;
+}
+
+/* ---- Reset -------------------------------------------------------- */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--aihub-bg);
+  color: var(--aihub-text);
+  font-family: var(--aihub-font-body);
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+button, input, textarea, select {
+  font-family: inherit;
+  color: inherit;
+}
+
+a {
+  color: var(--aihub-accent);
+}
+
+code, pre {
+  font-family: var(--aihub-font-mono);
+}
+
+/* Respect reduced-motion preferences: kill the theme-switch fade and
+   any other transition for anyone who's asked for it. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0.001ms !important;
+    animation-duration: 0.001ms !important;
+  }
+}
+
+/* Visible keyboard focus everywhere -- quality floor, not optional. */
+:focus-visible {
+  outline: 2px solid var(--aihub-accent);
+  outline-offset: 2px;
+}
+
+/* ---- App shell ------------------------------------------------- */
+
+#app-root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh; /* dynamic viewport height -- avoids mobile browser chrome jump */
+}
+
+#app-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  padding-top: max(10px, env(safe-area-inset-top));
+  background: var(--aihub-surface);
+  border-bottom: 1px solid var(--aihub-border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+#app-header.is-hidden {
+  display: none;
+}
+
+.aihub-header-back {
+  background: transparent;
+  border: none;
+  color: var(--aihub-text-dim);
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  line-height: 1;
+  border-radius: 8px;
+}
+
+.aihub-header-back:hover {
+  color: var(--aihub-text);
+  background: var(--aihub-surface-raised);
+}
+
+.aihub-header-title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.aihub-header-eyebrow {
+  display: block;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--aihub-text-dim);
+  margin-bottom: 1px;
+}
+
+.aihub-theme-toggle {
+  background: var(--aihub-surface-raised);
+  border: 1px solid var(--aihub-border);
+  color: var(--aihub-text);
+  border-radius: 999px;
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  font-size: 1.05rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#app-main {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  max-width: 640px;
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+/* Tab bar is anchored bottom on mobile -- thumb-reachable, matches
+   native app navigation conventions rather than a top tab strip. */
+#app-tabbar {
+  display: flex;
+  background: var(--aihub-surface);
+  border-top: 1px solid var(--aihub-border);
+  padding-bottom: env(safe-area-inset-bottom);
+  position: sticky;
+  bottom: 0;
+  z-index: 100;
+}
+
+#app-tabbar.is-hidden {
+  display: none;
+}
+
+.aihub-tab {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--aihub-text-dim);
+  padding: 10px 4px 8px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.aihub-tab-icon {
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.aihub-tab.is-active {
+  color: var(--aihub-accent);
+}
+
+.aihub-tab:hover {
+  color: var(--aihub-text);
+}
+
+.aihub-tab.is-active:hover {
+  color: var(--aihub-accent);
+}
+
+/* ---- Small shared utility classes used across pages ------------- */
+
+.aihub-eyebrow {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--aihub-text-dim);
+}
+
+.aihub-mono {
+  font-family: var(--aihub-font-mono);
+  font-size: 0.85rem;
+}
+
+.aihub-panel {
+  background: var(--aihub-surface);
+  border: 1px solid var(--aihub-border);
+  border-radius: var(--aihub-radius);
+  padding: 14px;
+}
+
+@media (min-width: 640px) {
+  #app-main {
+    padding: 24px;
+  }
+}

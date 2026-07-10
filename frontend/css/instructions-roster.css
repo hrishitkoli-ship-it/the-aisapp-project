@@ -1,0 +1,450 @@
+/**
+ * instructions-roster.css
+ * ------------------------------------------------------------------
+ * Session 2 lane. Styles for the AI Session Roster page, the
+ * Instructions & Functionalities page, and the shared Activity
+ * Timeline component.
+ *
+ * Depends on the CSS custom properties defined in projects.css
+ * (--aihub-bg, --aihub-surface, --aihub-accent, etc.) -- loaded
+ * after that file, never redefines the :root tokens. Same
+ * `aihub-` selector prefix for the same reason Session 3 used it:
+ * safe to drop into Session 1's shell with zero collisions.
+ *
+ * No CSS framework, no preprocessor -- see INSTRUCTIONS.md
+ * architecture rule #1 (no build step).
+ * ------------------------------------------------------------------
+ */
+
+/* ---- Shared section scaffolding ---- */
+
+.aihub-page-subtitle {
+  font-size: 0.85rem;
+  color: var(--aihub-text-dim);
+  margin: -12px 0 20px;
+  line-height: 1.4;
+}
+
+.aihub-section-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 0;
+  color: var(--aihub-text);
+}
+
+.aihub-block-subtitle {
+  font-size: 0.8rem;
+  color: var(--aihub-text-dim);
+  margin: -6px 0 12px;
+  line-height: 1.4;
+}
+
+.aihub-instructions-block {
+  background: var(--aihub-surface);
+  border: 1px solid var(--aihub-border);
+  border-radius: var(--aihub-radius);
+  padding: 14px;
+  margin-bottom: 20px;
+}
+
+.aihub-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.aihub-btn--sm {
+  padding: 6px 12px;
+  font-size: 0.85rem;
+}
+
+/* ---- Badges (extends projects.css .aihub-badge) ---- */
+
+.aihub-badge--count {
+  position: static;
+  background: var(--aihub-danger);
+  margin-left: 6px;
+}
+
+.aihub-badge--pending {
+  position: static;
+  background: var(--aihub-surface-raised);
+  color: var(--aihub-text-dim);
+  border: 1px solid var(--aihub-border);
+}
+
+.aihub-badge--approved {
+  position: static;
+  background: transparent;
+  color: var(--aihub-success);
+  border: 1px solid var(--aihub-success);
+}
+
+.aihub-badge--rejected {
+  position: static;
+  background: transparent;
+  color: var(--aihub-danger);
+  border: 1px solid var(--aihub-danger);
+}
+
+.aihub-badge--priority-high,
+.aihub-badge--priority-urgent {
+  position: static;
+  background: var(--aihub-danger-dim);
+  color: var(--aihub-danger);
+}
+
+.aihub-badge--priority-low {
+  position: static;
+  background: transparent;
+  color: var(--aihub-text-dim);
+  border: 1px solid var(--aihub-border);
+}
+
+/* ==================================================================
+   AI Session Roster
+   ================================================================== */
+
+.aihub-roster-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.aihub-roster-count {
+  font-size: 0.85rem;
+  color: var(--aihub-text-dim);
+}
+
+.aihub-roster-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.aihub-roster-card {
+  background: var(--aihub-surface);
+  border: 1px solid var(--aihub-border);
+  border-radius: var(--aihub-radius);
+  padding: 14px;
+}
+
+.aihub-roster-card-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.aihub-status-dot {
+  width: 9px;
+  height: 9px;
+  min-width: 9px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.aihub-status-dot--active {
+  background: var(--aihub-success);
+  box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.15);
+}
+
+.aihub-status-dot--idle {
+  background: var(--aihub-text-dim);
+}
+
+.aihub-status-dot--stale {
+  background: var(--aihub-danger);
+  opacity: 0.7;
+}
+
+.aihub-roster-card-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.aihub-roster-card-label {
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--aihub-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.aihub-roster-card-status {
+  font-size: 0.75rem;
+  color: var(--aihub-text-dim);
+  flex-shrink: 0;
+}
+
+.aihub-roster-card-row {
+  display: flex;
+  gap: 8px;
+  font-size: 0.85rem;
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+
+.aihub-roster-card-field {
+  color: var(--aihub-text-dim);
+  flex-shrink: 0;
+  min-width: 88px;
+}
+
+.aihub-roster-card-task {
+  color: var(--aihub-text);
+}
+
+.aihub-roster-card-meta {
+  font-size: 0.72rem;
+  color: var(--aihub-text-dim);
+  margin-top: 8px;
+  opacity: 0.8;
+}
+
+/* ---- Task queue nested in a roster card ---- */
+
+.aihub-roster-queue {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--aihub-border);
+}
+
+.aihub-roster-queue-label {
+  font-size: 0.75rem;
+  color: var(--aihub-text-dim);
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+}
+
+.aihub-roster-queue-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.aihub-roster-queue-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 0.8rem;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--aihub-surface-raised);
+  flex-wrap: wrap;
+}
+
+.aihub-roster-queue-item--done {
+  opacity: 0.55;
+}
+
+.aihub-roster-queue-from {
+  font-weight: 600;
+  color: var(--aihub-accent);
+  flex-shrink: 0;
+}
+
+.aihub-roster-queue-msg {
+  color: var(--aihub-text);
+  flex: 1;
+  min-width: 0;
+}
+
+/* ==================================================================
+   Instructions & Functionalities
+   ================================================================== */
+
+.aihub-notes-textarea {
+  min-height: 100px;
+}
+
+.aihub-notes-save-status {
+  font-size: 0.75rem;
+  color: var(--aihub-text-dim);
+  min-height: 1em;
+}
+
+.aihub-functionality-list,
+.aihub-assignment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.aihub-functionality-item {
+  background: var(--aihub-surface-raised);
+  border: 1px solid var(--aihub-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.aihub-functionality-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--aihub-text);
+}
+
+.aihub-functionality-desc {
+  font-size: 0.82rem;
+  color: var(--aihub-text-dim);
+  margin-top: 3px;
+  line-height: 1.4;
+}
+
+.aihub-functionality-meta,
+.aihub-assignment-meta {
+  display: flex;
+  gap: 10px;
+  font-size: 0.72rem;
+  color: var(--aihub-text-dim);
+  margin-top: 6px;
+  opacity: 0.8;
+}
+
+.aihub-assignment-item {
+  background: var(--aihub-surface-raised);
+  border: 1px solid var(--aihub-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.aihub-assignment-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.aihub-assignment-title {
+  font-size: 0.9rem;
+  color: var(--aihub-text);
+  line-height: 1.4;
+}
+
+.aihub-assignment-fn {
+  font-weight: 600;
+}
+
+.aihub-assignment-target {
+  color: var(--aihub-accent);
+}
+
+.aihub-assignment-reason {
+  font-size: 0.82rem;
+  color: var(--aihub-text-dim);
+  margin-top: 6px;
+  line-height: 1.4;
+}
+
+.aihub-assignment-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* ==================================================================
+   Shared Activity Timeline
+   ================================================================== */
+
+.aihub-activity-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.aihub-activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.aihub-activity-row {
+  display: flex;
+  gap: 10px;
+  padding: 9px 6px;
+  border-bottom: 1px solid var(--aihub-border);
+}
+
+.aihub-activity-row:last-child {
+  border-bottom: none;
+}
+
+.aihub-activity-icon {
+  flex-shrink: 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  width: 20px;
+  text-align: center;
+}
+
+.aihub-activity-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.aihub-activity-message {
+  font-size: 0.85rem;
+  color: var(--aihub-text);
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.aihub-activity-meta {
+  display: flex;
+  gap: 10px;
+  font-size: 0.72rem;
+  color: var(--aihub-text-dim);
+  margin-top: 3px;
+  opacity: 0.8;
+}
+
+/* security_alert entries need to stand out from the rest of the feed
+   at a glance -- a human skimming a long list on mobile should not
+   have to read every row to notice a blocked traversal attempt. */
+
+.aihub-activity-row--alert {
+  background: var(--aihub-danger-dim);
+  border-radius: 8px;
+  border-bottom: none;
+  margin: 2px 0;
+}
+
+.aihub-activity-row--alert .aihub-activity-message {
+  color: var(--aihub-danger);
+}
+
+.aihub-activity-alert-tag {
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.68rem;
+  letter-spacing: 0.03em;
+  margin-right: 4px;
+}
+
+@media (max-width: 480px) {
+  .aihub-roster-card-row {
+    flex-direction: column;
+    gap: 2px;
+  }
+  .aihub-roster-card-field {
+    min-width: 0;
+  }
+  .aihub-assignment-top {
+    flex-direction: column;
+    gap: 6px;
+  }
+}

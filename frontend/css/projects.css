@@ -9,22 +9,15 @@
  *
  * No CSS framework, no preprocessor -- see INSTRUCTIONS.md
  * architecture rule #1 (no build step).
+ *
+ * NOTE: the --aihub-* custom properties this file uses are now
+ * defined in base.css (Session 1's shared design-token file), which
+ * also adds a [data-theme="light"] variant using these same names.
+ * The values below were Session 3's originals; base.css copied them
+ * verbatim rather than changing anything -- this file just no longer
+ * needs its own :root block since base.css is always loaded first.
  * ------------------------------------------------------------------
  */
-
-:root {
-  --aihub-bg: #0d0d0f;
-  --aihub-surface: #17171a;
-  --aihub-surface-raised: #1f1f23;
-  --aihub-border: #2a2a2e;
-  --aihub-text: #e8e8ea;
-  --aihub-text-dim: #9a9aa0;
-  --aihub-accent: #4d8dff;
-  --aihub-danger: #ff5c5c;
-  --aihub-danger-dim: #4a2020;
-  --aihub-success: #4ade80;
-  --aihub-radius: 10px;
-}
 
 .aihub-page-title {
   font-size: 1.4rem;
@@ -222,6 +215,28 @@
   text-align: center;
   padding: 32px 16px;
   font-size: 0.9rem;
+}
+
+.aihub-loading-state {
+  color: var(--aihub-text-dim);
+  text-align: center;
+  padding: 32px 16px;
+  font-size: 0.9rem;
+  opacity: 0.6;
+}
+
+.aihub-error-state {
+  text-align: center;
+  padding: 24px 16px;
+  border: 1px solid var(--aihub-danger);
+  background: var(--aihub-danger-dim);
+  border-radius: var(--aihub-radius);
+}
+
+.aihub-error-state p {
+  color: var(--aihub-danger);
+  font-size: 0.9rem;
+  margin: 0 0 12px;
 }
 
 /* ---- Status toast ---- */

@@ -1,0 +1,199 @@
+/**
+ * workspace.css
+ * ------------------------------------------------------------------
+ * Session 1 lane. Styles specific to the Workspace page (file tree +
+ * editor + conflict diff). Shared component classes (.aihub-btn,
+ * .aihub-status, .aihub-modal, .aihub-empty-state) already exist in
+ * projects.css -- this file only adds what's genuinely new here,
+ * using the same --aihub-* tokens from base.css throughout.
+ * ------------------------------------------------------------------
+ */
+
+.aihub-ws-toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+/* ---- File tree ---- */
+
+.aihub-ws-tree-panel {
+  padding: 6px;
+}
+
+.aihub-tree-level {
+  display: flex;
+  flex-direction: column;
+}
+
+.aihub-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  color: var(--aihub-text);
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  cursor: pointer;
+  border-radius: 6px;
+  width: 100%;
+}
+
+.aihub-tree-row:hover,
+.aihub-tree-row:focus-visible {
+  background: var(--aihub-surface-raised);
+}
+
+.aihub-tree-row--file.is-selected {
+  background: var(--aihub-accent-dim);
+  color: var(--aihub-accent);
+}
+
+.aihub-tree-caret {
+  color: var(--aihub-text-dim);
+  width: 12px;
+  flex-shrink: 0;
+  font-size: 0.75rem;
+}
+
+.aihub-tree-icon {
+  flex-shrink: 0;
+}
+
+.aihub-tree-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- Editor ---- */
+
+.aihub-ws-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.aihub-ws-editor-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.aihub-ws-editor-path {
+  color: var(--aihub-text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.85rem;
+}
+
+.aihub-ws-editor-body {
+  display: flex;
+  background: var(--aihub-surface);
+  border: 1px solid var(--aihub-border);
+  border-radius: var(--aihub-radius);
+  overflow: hidden;
+  height: 55vh;
+  min-height: 280px;
+}
+
+.aihub-ws-gutter {
+  flex-shrink: 0;
+  padding: 10px 8px;
+  text-align: right;
+  color: var(--aihub-text-dim);
+  background: var(--aihub-surface-raised);
+  border-right: 1px solid var(--aihub-border);
+  overflow-y: hidden;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  user-select: none;
+}
+
+.aihub-ws-textarea {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--aihub-text);
+  padding: 10px 12px;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  resize: none;
+  outline: none;
+  /* Deliberately no wrap: keeps every line's gutter number aligned to
+     its actual row. Long lines scroll horizontally instead -- a plain
+     textarea can't reflow-wrap while keeping a separate gutter in
+     sync without a much heavier editor component. */
+  white-space: pre;
+  overflow: auto;
+}
+
+.aihub-ws-editor-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.aihub-ws-editor-actions .aihub-btn--danger {
+  margin-left: auto;
+}
+
+/* ---- Conflict diff ---- */
+
+.aihub-modal--wide {
+  max-width: 640px;
+}
+
+.aihub-diff {
+  background: var(--aihub-surface-raised);
+  border: 1px solid var(--aihub-border);
+  border-radius: 8px;
+  padding: 8px 0;
+  max-height: 40vh;
+  overflow-y: auto;
+  margin-bottom: 14px;
+  font-family: var(--aihub-font-mono);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.aihub-diff-line {
+  padding: 0 10px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.aihub-diff-line--added {
+  background: var(--aihub-success-dim);
+  color: var(--aihub-success);
+}
+
+.aihub-diff-line--removed {
+  background: var(--aihub-danger-dim);
+  color: var(--aihub-danger);
+}
+
+.aihub-diff-line--same {
+  color: var(--aihub-text-dim);
+}
+
+.aihub-diff-line--collapsed {
+  color: var(--aihub-text-dim);
+  text-align: center;
+  opacity: 0.6;
+}
+
+.aihub-diff-toolong {
+  padding: 10px 14px;
+  margin: 0;
+  color: var(--aihub-text-dim);
+  font-family: var(--aihub-font-body);
+  font-size: 0.85rem;
+}
