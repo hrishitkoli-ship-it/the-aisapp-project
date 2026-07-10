@@ -9,22 +9,15 @@
  *
  * No CSS framework, no preprocessor -- see INSTRUCTIONS.md
  * architecture rule #1 (no build step).
+ *
+ * NOTE: the --aihub-* custom properties this file uses are now
+ * defined in base.css (Session 1's shared design-token file), which
+ * also adds a [data-theme="light"] variant using these same names.
+ * The values below were Session 3's originals; base.css copied them
+ * verbatim rather than changing anything -- this file just no longer
+ * needs its own :root block since base.css is always loaded first.
  * ------------------------------------------------------------------
  */
-
-:root {
-  --aihub-bg: #0d0d0f;
-  --aihub-surface: #17171a;
-  --aihub-surface-raised: #1f1f23;
-  --aihub-border: #2a2a2e;
-  --aihub-text: #e8e8ea;
-  --aihub-text-dim: #9a9aa0;
-  --aihub-accent: #4d8dff;
-  --aihub-danger: #ff5c5c;
-  --aihub-danger-dim: #4a2020;
-  --aihub-success: #4ade80;
-  --aihub-radius: 10px;
-}
 
 .aihub-page-title {
   font-size: 1.4rem;

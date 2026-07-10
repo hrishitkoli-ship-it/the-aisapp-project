@@ -140,10 +140,17 @@ you've decided that's really what you want.
   SHA-256 hash -- the raw token is shown exactly once, at creation or
   regeneration time, the same way GitHub does it.
 - File paths from any request (human or AI) are resolved against the
-  project's own workspace folder and rejected if they'd resolve outside it,
-  including percent-encoded traversal attempts. A rejected attempt is logged
-  to that project's activity timeline, tagged `security_alert`, so it's
-  visible to the human even though the request itself was blocked.
+  project's own workspace folder and rejected if they'd resolve outside it.
+  A blocked attempt is logged to that project's activity timeline, tagged
+  `security_alert`, so it's visible to the human even though the request
+  itself was blocked. This logging fires for percent-encoded traversal
+  (e.g. `%2e%2e%2f`) -- a plain, unencoded `../` in a URL gets normalized
+  away by Express's own routing before it ever reaches this check, so it
+  never touches a real file but also never generates a log entry. In
+  practice this doesn't matter much: an actual AI agent calling this API
+  produces encoded paths (any HTTP client building a URL from a path
+  string does), so this is what a real misbehaving agent would trigger,
+  not a gap a real caller would land in.
 - CORS is left open and there's no cloud auth by design -- this is meant to
   run on one device you control, not to be exposed to the open internet.
   If you do expose it beyond your own LAN, put it behind your own auth

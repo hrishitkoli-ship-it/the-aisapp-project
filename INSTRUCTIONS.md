@@ -6,7 +6,8 @@ sessions against one project from a phone. Ironically, this project itself
 is being built by multiple AI sessions — you are one of them.
 
 Repo: `hrishitkoli-ship-it/the-aisapp-project` (private)
-Stack: Node 18+ / Express / vanilla JS backend, **no frontend yet**.
+Stack: Node 18+ / Express / vanilla JS backend, frontend in progress
+(Session 1 + Session 3 lanes done; Session 2 still outstanding -- see below).
 No native deps (no SQLite, no Docker) — everything must run in Termux.
 
 ---
@@ -28,16 +29,37 @@ the-aisapp-project/
 │   └── utils/
 │       ├── fileOps.js       Path safety + versioning          ✅ DONE
 │       └── tokens.js        Token gen/hash/verify             ✅ DONE
-├── frontend/                 ❌ DOES NOT EXIST — this is the gap
+├── frontend/
+│   ├── index.html            App shell, PWA meta, script loads ✅ DONE (S1)
+│   ├── manifest.json          PWA manifest                     ✅ DONE (S1)
+│   ├── service-worker.js      Offline app-shell caching         ✅ DONE (S1)
+│   ├── css/
+│   │   ├── base.css           Shared tokens, light+dark, shell  ✅ DONE (S1)
+│   │   ├── projects.css       Project list/create/manage UI     ✅ DONE (S3)
+│   │   └── workspace.css      Tree/editor/diff view             ✅ DONE (S1)
+│   ├── js/
+│   │   ├── theme.js           Dark/light toggle                 ✅ DONE (S1)
+│   │   ├── router.js          Hash router + app-shell chrome     ✅ DONE (S1)
+│   │   ├── projects.js        ProjectManager (list/create/token) ✅ DONE (S3)
+│   │   └── pages/
+│   │       ├── workspace.js   Page 1: tree/editor/conflict UI   ✅ DONE (S1)
+│   │       ├── roster.js      Page 2: AI Session Roster          ❌ GAP (S2)
+│   │       └── instructions.js Page 3: Instructions/approval gate ❌ GAP (S2)
+│   └── icons/                 PWA icons (192/512)                ✅ DONE (S1)
 ├── projects/                 Runtime data, gitignored
 ├── package.json               express, cors, nanoid only
 └── README.md                  Full API reference — READ THIS FIRST
 ```
 
-**The backend is functionally complete and well-built.** The entire
-remaining scope is the frontend PWA, plus hardening/testing/polish. Read
-`README.md` in the repo root before writing any code — it documents every
-route, the two-identity model, and conflict handling in detail.
+**The backend and Session 1/3's frontend lanes are functionally complete
+and tested end-to-end against the real server (not mocked responses) --
+see git log for Session 1's verification notes.** The remaining gap is
+Session 2's two pages (Roster, Instructions), which the router already
+routes to with an honest "not built yet" placeholder rather than a crash,
+so the app is fully navigable and usable for Workspace + project management
+right now. Read `README.md` in the repo root before writing any code — it
+documents every route, the two-identity model, and conflict handling in
+detail.
 
 ---
 

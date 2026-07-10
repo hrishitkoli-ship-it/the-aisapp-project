@@ -1,80 +1,58 @@
 <!DOCTYPE html>
 <!--
-  index.html — PLACEHOLDER SHELL, not the final app shell.
+  index.html
   ------------------------------------------------------------------
-  Session 3 built this ONLY to unblock testing: without SOME
-  frontend/index.html, the SPA fallback in server.js 500s on every
-  route (see KNOWN_ISSUES.md), and the Project Management UI has no
-  way to be reached outside a standalone test harness.
-
-  This is intentionally minimal:
-    - no manifest.json link (PWA installability is Session 1's scope)
-    - no service worker registration (same)
-    - no real routing beyond mounting Session 3's screen
-    - no visual design pass (Session 1 owns frontend-design decisions)
-
-  SESSION 1: replace this file freely. Nothing here should be treated
-  as a design decision to preserve -- it's scaffolding, not a spec.
-  The one thing worth keeping if convenient: the <div id="app"> mount
-  point and the `projectselected` event contract that projects.js
-  fires on `document` (see frontend/js/projects.js header comment).
+  Session 1 lane. Replaces the placeholder Session 3 left here
+  (see git history -- their note: "SESSION 1: replace this file
+  freely"). The one contract preserved from their placeholder:
+  <div id="app"> is still the mount point ProjectManager.init() and
+  AihubWorkspace.mount() both receive.
   ------------------------------------------------------------------
 -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>AI Collaborative Hub</title>
+  <meta name="description" content="Local-first project hub for coordinating a human and multiple AI coding agents." />
+
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#0d0d0f" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+  <link rel="stylesheet" href="css/base.css" />
   <link rel="stylesheet" href="css/projects.css" />
-  <style>
-    /* Bare-minimum reset so Session 3's screens aren't fighting
-       default browser margins. Not a design system -- see notice
-       above. */
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      background: var(--aihub-bg, #0d0d0f);
-      color: var(--aihub-text, #e8e8ea);
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    }
-    #app {
-      max-width: 480px;
-      margin: 0 auto;
-      padding: 16px;
-    }
-    .aihub-placeholder-notice {
-      font-size: 0.7rem;
-      color: #666;
-      text-align: center;
-      padding: 8px;
-      border-bottom: 1px dashed #333;
-    }
-  </style>
+  <link rel="stylesheet" href="css/workspace.css" />
 </head>
 <body>
-  <div class="aihub-placeholder-notice">
-    placeholder shell — Session 1's app shell will replace this
+  <div id="app-root">
+    <header id="app-header"></header>
+    <main id="app-main">
+      <div id="app"></div>
+    </main>
+    <nav id="app-tabbar" aria-label="Project sections"></nav>
   </div>
-  <div id="app"></div>
 
+  <!-- Load order matters: theme + project manager first (router and
+       workspace both call into them), workspace before router (router
+       checks window.AihubWorkspace when deciding what to mount), router
+       last since it fires the first render() referencing everything
+       above. No modules/bundler -- plain sequential scripts. -->
+  <script src="js/theme.js"></script>
   <script src="js/projects.js"></script>
-  <script>
-    // Minimal routing: this placeholder only ever shows the project
-    // list/switcher. A real router (hash-based or pushState, per
-    // INSTRUCTIONS.md) belongs to Session 1 -- this just proves the
-    // mount contract works end-to-end.
-    ProjectManager.init(document.getElementById('app'));
+  <script src="js/pages/workspace.js"></script>
+  <script src="js/router.js"></script>
 
-    // Once a project is selected, there's no workspace/roster/
-    // instructions screen to route to yet (Sessions 1 & 2's scope).
-    // Surface that honestly instead of pretending navigation happened.
-    document.addEventListener('projectselected', (e) => {
-      const app = document.getElementById('app');
-      const note = document.createElement('p');
-      note.style.cssText = 'color:#9a9aa0;font-size:0.85rem;text-align:center;margin-top:16px;';
-      note.textContent = `Selected project ${e.detail.projectId} — workspace UI not built yet (Session 1).`;
-      app.appendChild(note);
-    });
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js').catch((err) => {
+          console.warn('Service worker registration failed:', err);
+        });
+      });
+    }
   </script>
 </body>
 </html>
