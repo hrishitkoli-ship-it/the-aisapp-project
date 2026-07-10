@@ -192,6 +192,139 @@ Audit, don't rebuild — the backend patterns are already good. Focus on:
   top of the current version, and re-submit. Never `force: true` without
   understanding what you'd be overwriting.
 
+## Session Ledger
+
+Running record of what's actually landed, kept up to date by whichever
+session last touched something. Not a task list (that's the Lane
+assignments section above) — this is "what shipped," so a session
+starting cold — or the human checking in from a phone — doesn't have to
+diff commit history to know current state.
+
+### Session 3 — Project Management UI + onboarding
+**Status: shipped.** `frontend/js/projects.js` + `frontend/css/projects.css`.
+Create/list/switch/regenerate/delete, token-reveal modal (shown once,
+mirrors GitHub PAT UX), destructive-action confirms, PWA install hint.
+Also authored the placeholder `frontend/index.html` (see that file's own
+header comment — Session 1 owns replacing it) purely to unblock the
+SPA-fallback 500 documented in `KNOWN_ISSUES.md`.
+
+### Session 4 — Security & hardening review
+**Status: shipped.** Audited `fileOps.js`/`store.js` path-safety, found
+and fixed the `projectDir()` traversal gap on the DELETE route (see
+`db/store.js` header comment — confirmed via isolated PoC, not
+theoretical). Confirmed token comparison is constant-time throughout.
+
+### Session 5 — Testing, docs, and integration
+**Status: shipped.** Full route smoke test (`SESSION5_TEST_REPORT.md`),
+conflict-detection end-to-end verification, confirmed the AI→approve
+permission boundary genuinely 404s rather than 403s. Two low-priority
+findings logged (README gap, non-encoded traversal not logged — both
+expected behavior, not bugs).
+
+### Session 2 — Session Roster + Instructions pages
+**Status: shipped.** `frontend/js/roster.js`, `frontend/js/instructions.js`,
+`frontend/js/activity.js` (shared component), `frontend/css/instructions-roster.css`.
+
+- Roster: strictly read-only per spec, no write UI added to compensate
+  for the backend having none. Sessions sorted active-first, stale
+  (>10min silent) pushed down. Nested task-queue rendering with
+  priority badges.
+- Instructions: debounced notes autosave, functionality list, and the
+  Function Assignment Gate — Approve/Reject buttons exist *only* on
+  this page and call *only* the human-facing routes. No client-side
+  permission check added on top, because the backend route boundary
+  (approve doesn't exist on `aiRouter` at all) already is the
+  boundary — duplicating it client-side would just be more surface
+  area to keep in sync.
+- Activity timeline: shared across pages, `security_alert` entries
+  rendered distinctly (icon + tag + red surface) so a human skimming
+  a long feed doesn't have to read every row to notice one. Polling
+  pauses on `document.hidden`, resumes + refreshes on return.
+
+Verified against a live local server (not just written): seeded real
+sessions/requests/assignments through actual API calls, triggered a
+genuine `security_alert` via an actual encoded-traversal attempt,
+clicked the real Approve button and confirmed via separate `curl` that
+the write persisted and got logged — not just that the DOM updated.
+
+Still open from Session 2's original scope: none. Lane complete.
+
+**Follow-up (same session, human-requested):**
+- Added this ledger.
+- Added `IDEAS.md` (repo root) — a proposal board outside the app
+  itself. Any session can add an idea; only the human marks one
+  `**APPROVED**`/`**REJECTED**`; nobody self-approves. Mirrors the
+  Function Assignment Gate pattern but as a plain file, not a route.
+- Fixed Session 5's Finding 2 (`README.md` "Security notes"): the
+  `security_alert` logging guarantee was stated more broadly than it
+  actually behaves. Clarified that it applies to requests reaching
+  the route handler — Express normalizes a raw non-encoded `../`
+  before `safeResolve()` ever runs, so those fall through to the SPA
+  shell unlogged (never a real vulnerability, since no file outside
+  the workspace is touched either way; just previously-imprecise
+  docs). Went with Session 5's own recommended option 1
+  (docs-clarify) over option 2 (new middleware) — read the actual
+  route/middleware chain myself and agree with Session 5's reasoning
+  that a raw-`..` interceptor is unneeded complexity for a
+  local-only tool where the real caller (an AI agent) always sends
+  encoded paths anyway.
+- Re-read every backend file end to end before touching anything,
+  specifically to avoid manufacturing work. Finding 1 was already
+  fixed by Session 5. Finding 2 (above) is now closed. No other bug
+  found — backend genuinely is in the state Sessions 4 and 5
+  reported.
+
+### Session 1 — Frontend Core (Workspace + file tree UI)
+**Status: shipped.** `frontend/index.html` (real app shell, replacing
+Session 3's unblock-only placeholder), `frontend/js/router.js`,
+`frontend/js/theme.js`, `frontend/js/pages/workspace.js`,
+`frontend/css/base.css`, `frontend/css/workspace.css`,
+`frontend/manifest.json`, `frontend/service-worker.js`,
+`frontend/icons/`.
+
+- `base.css` extends Session 3's `--aihub-*` tokens (dark values copied
+  verbatim, unchanged) with a `[data-theme="light"]` variant and the
+  app-shell layout (sticky header, bottom tab bar, safe-area-inset
+  aware for notched phones).
+- Router is hash-based (`#/project/:id/workspace|roster|instructions`),
+  wires `projectselected` to navigation, and mounts Session 2's
+  `SessionRoster`/`InstructionsPage` modules directly via their
+  documented `init(mountEl, projectId)` contract -- including calling
+  their returned `.destroy()` on every navigation away, so their
+  polling timers don't leak when switching tabs or projects.
+  `InstructionsPage.init()` is async; the router guards against
+  mounting a stale controller if the user navigates away again before
+  it resolves.
+- Workspace: file tree, editor (deliberately no line-wrap so the
+  gutter's line numbers stay correctly aligned to the textarea's
+  actual rows -- wrapping would desync them without a much heavier
+  editor component), download, delete, new-file creation.
+- Conflict UI verified against a real `409` from the live server (not
+  a mocked assumption, per Session 5's ask in the lane notes below):
+  fetches the current server content and renders an actual LCS
+  line-diff (capped at 2000 lines/side to avoid hanging the tab on
+  something huge), not just a version-number message. Never
+  force-writes automatically -- the human chooses keep-mine or
+  use-theirs.
+- Icons: pure-Node/zlib PNG generation, no native image libraries
+  (canvas/sharp need a native compile step this project avoids
+  everywhere else). Circular badge + ring/dot motif, built as an
+  original composition in response to style direction the human gave
+  on a reference image, not traced from it.
+- Fixed Finding 1 from Session 5's report was already closed by
+  Session 5 themselves; independently also found and fixed the same
+  README Finding 2 wording (traversal-logging scope) Session 2 later
+  fixed too -- both landed as parallel commits, merged by
+  synthesizing one version from both rather than picking a side, since
+  neither was wrong, just independently duplicated.
+
+Verified end-to-end against the real backend before pushing: static
+asset serving, project creation, file tree/read/write, the conflict
+flow above, and registering as `session-1` in a local test project's
+roster while developing (not committed -- `projects/` is gitignored).
+
+---
+
 ---
 
 ## Definition of done for the whole project

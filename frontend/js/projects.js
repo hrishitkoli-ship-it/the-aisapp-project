@@ -102,6 +102,32 @@
     while (el.firstChild) el.removeChild(el.firstChild);
   }
 
+  // -------------------------------------------------------------
+  // Focus trap -- shared by both modal types. Keeps Tab/Shift+Tab
+  // cycling within the modal instead of escaping to background
+  // content, and marks the modal for screen readers. Returns a
+  // cleanup function to remove the keydown listener.
+  // -------------------------------------------------------------
+
+  function trapFocus(modal) {
+    function onKeydown(e) {
+      if (e.key !== 'Tab') return;
+      const focusable = modal.querySelectorAll('button, [href], input, textarea, [tabindex]:not([tabindex="-1"])');
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+    modal.addEventListener('keydown', onKeydown);
+    return () => modal.removeEventListener('keydown', onKeydown);
+  }
+
   function timeAgo(isoString) {
     const diffMs = Date.now() - new Date(isoString).getTime();
     const mins = Math.floor(diffMs / 60000);
@@ -168,18 +194,23 @@
       "I've copied it"
     );
 
-    const modal = h('div', { class: 'aihub-modal' }, [
-      h('h2', {}, isRegeneration ? 'New AI token generated' : `"${projectName}" created`),
-      h(
-        'p',
-        { class: 'aihub-modal-warning' },
-        isRegeneration
-          ? 'The previous token is now invalid. This new one is shown only once.'
-          : 'This token is shown only once. Copy it now — there is no way to view it again, only regenerate a new one.'
-      ),
-      h('code', { class: 'aihub-token-display', tabindex: '0' }, token),
-      h('div', { class: 'aihub-modal-actions' }, [copyBtn, doneBtn]),
-    ]);
+    const titleId = `aihub-token-title-${Math.random().toString(36).slice(2, 9)}`;
+    const modal = h(
+      'div',
+      { class: 'aihub-modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId },
+      [
+        h('h2', { id: titleId }, isRegeneration ? 'New AI token generated' : `"${projectName}" created`),
+        h(
+          'p',
+          { class: 'aihub-modal-warning' },
+          isRegeneration
+            ? 'The previous token is now invalid. This new one is shown only once.'
+            : 'This token is shown only once. Copy it now — there is no way to view it again, only regenerate a new one.'
+        ),
+        h('code', { class: 'aihub-token-display', tabindex: '0' }, token),
+        h('div', { class: 'aihub-modal-actions' }, [copyBtn, doneBtn]),
+      ]
+    );
 
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
@@ -188,6 +219,7 @@
     // must explicitly confirm they've copied it -- an accidental
     // Escape/tap-outside dismissing a token they haven't saved would
     // be a real loss, so we deliberately don't wire that up.
+    trapFocus(modal);
     modal.querySelector('.aihub-token-display').focus();
   }
 
@@ -199,13 +231,26 @@
   // -------------------------------------------------------------
 
   function confirmDestructive({ title, body, confirmLabel, onConfirm }) {
-    const overlay = h('div', { class: 'aihub-modal-overlay' });
+    // Guard against a rapid double-tap on the icon button that opens
+    // this (common on touchscreens) stacking two overlays before the
+    // first one visually registers. Also a safe backstop against any
+    // other modal already being open.
+    if (document.querySelector('.aihub-modal-overlay')) return;
 
-    const cancelBtn = h(
-      'button',
-      { class: 'aihub-btn', onclick: () => overlay.remove() },
-      'Cancel'
-    );
+    const overlay = h('div', { class: 'aihub-modal-overlay' });
+    let releaseFocusTrap = () => {};
+
+    function close() {
+      document.removeEventListener('keydown', onKeydown);
+      releaseFocusTrap();
+      overlay.remove();
+    }
+
+    function onKeydown(e) {
+      if (e.key === 'Escape') close();
+    }
+
+    const cancelBtn = h('button', { class: 'aihub-btn', onclick: close }, 'Cancel');
 
     const confirmBtn = h(
       'button',
@@ -216,7 +261,7 @@
           confirmBtn.textContent = 'Working…';
           try {
             await onConfirm();
-            overlay.remove();
+            close();
           } catch (err) {
             confirmBtn.disabled = false;
             confirmBtn.textContent = confirmLabel;
@@ -227,14 +272,29 @@
       confirmLabel
     );
 
-    const modal = h('div', { class: 'aihub-modal' }, [
-      h('h2', {}, title),
-      h('p', {}, body),
-      h('div', { class: 'aihub-modal-actions' }, [cancelBtn, confirmBtn]),
-    ]);
+    const titleId = `aihub-confirm-title-${Math.random().toString(36).slice(2, 9)}`;
+    const modal = h(
+      'div',
+      { class: 'aihub-modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId },
+      [
+        h('h2', { id: titleId }, title),
+        h('p', {}, body),
+        h('div', { class: 'aihub-modal-actions' }, [cancelBtn, confirmBtn]),
+      ]
+    );
 
     overlay.appendChild(modal);
+    // Tap outside the modal cancels, same as Escape. Safe here because
+    // canceling just abandons a destructive action the user hasn't
+    // confirmed yet -- unlike showTokenModal, nothing is lost. That
+    // modal intentionally has neither of these affordances.
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) close();
+    });
+    document.addEventListener('keydown', onKeydown);
     document.body.appendChild(overlay);
+    releaseFocusTrap = trapFocus(modal);
+    cancelBtn.focus();
   }
 
   // -------------------------------------------------------------
@@ -256,6 +316,7 @@
       maxlength: '280',
     });
     const submitBtn = h('button', { class: 'aihub-btn aihub-btn--primary', type: 'submit' }, 'Create project');
+    let isSubmitting = false;
 
     const form = h(
       'form',
@@ -263,11 +324,13 @@
         class: 'aihub-create-form',
         onsubmit: async (e) => {
           e.preventDefault();
+          if (isSubmitting) return; // guards a rapid double-tap beating the disabled state to the next event
           const name = nameInput.value.trim();
           if (!name) {
             nameInput.focus();
             return;
           }
+          isSubmitting = true;
           submitBtn.disabled = true;
           submitBtn.textContent = 'Creating…';
           try {
@@ -279,6 +342,7 @@
           } catch (err) {
             showStatus(mountEl, err.message, 'error');
           } finally {
+            isSubmitting = false;
             submitBtn.disabled = false;
             submitBtn.textContent = 'Create project';
           }
@@ -344,13 +408,31 @@
 
   async function renderProjectList(mountEl, listEl, currentId, callbacks) {
     clear(listEl);
+    listEl.appendChild(h('p', { class: 'aihub-loading-state' }, 'Loading projects…'));
+
     let projects;
     try {
       projects = await listProjects();
     } catch (err) {
-      listEl.appendChild(h('p', { class: 'aihub-empty-state' }, `Couldn't load projects: ${err.message}`));
+      clear(listEl);
+      const retryBtn = h(
+        'button',
+        {
+          class: 'aihub-btn aihub-btn--subtle',
+          onclick: () => renderProjectList(mountEl, listEl, currentId, callbacks),
+        },
+        'Try again'
+      );
+      listEl.appendChild(
+        h('div', { class: 'aihub-error-state' }, [
+          h('p', {}, `Couldn't load projects: ${err.message}`),
+          retryBtn,
+        ])
+      );
       return;
     }
+
+    clear(listEl);
 
     if (projects.length === 0) {
       listEl.appendChild(
@@ -464,10 +546,16 @@
       function selectProject(id) {
         setCurrentProjectId(id);
         document.dispatchEvent(new CustomEvent('projectselected', { detail: { projectId: id } }));
+        // Re-render so the "Current" badge reflects the new selection
+        // immediately, rather than waiting for some unrelated action
+        // (create/regenerate/delete) to trigger the next refresh().
+        refresh();
       }
 
       function refresh() {
-        renderProjectList(mountEl, listEl, getCurrentProjectId(), {
+        // Returned so callers -- including init() below -- can await
+        // the first paint instead of resolving before data has loaded.
+        return renderProjectList(mountEl, listEl, getCurrentProjectId(), {
           onSelect: selectProject,
           onRegenerate: (project) => {
             confirmDestructive({
@@ -497,7 +585,7 @@
         });
       }
 
-      refresh();
+      return refresh();
     },
 
     // Exposed for the app shell / router (Session 1) to query without

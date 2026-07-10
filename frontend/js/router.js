@@ -11,8 +11,15 @@
  * Routes:
  *   #/                              -> project list (Session 3's UI)
  *   #/project/:id/workspace         -> Session 1 (this session)
- *   #/project/:id/roster            -> Session 2 (placeholder for now)
- *   #/project/:id/instructions      -> Session 2 (placeholder for now)
+ *   #/project/:id/roster            -> Session 2's SessionRoster module
+ *   #/project/:id/instructions      -> Session 2's InstructionsPage module
+ *
+ * Page modules (roster.js, instructions.js) return a controller with
+ * .destroy() to stop their polling; the router tears down whichever
+ * one is mounted before navigating anywhere else. If a page module
+ * isn't loaded at all (script 404, bad deploy), an honest fallback
+ * message shows instead of a blank screen -- this shouldn't normally
+ * trigger now that all three page modules exist.
  *
  * Integration contracts honored:
  *   - Mounts everything into <div id="app"> (Session 3's contract)
@@ -156,9 +163,28 @@
   }
 
   // -------------------------------------------------------------
-  // Placeholder for pages not yet built (Session 2's lane) --
-  // matches Session 3's own placeholder tone: honest, not a crash,
-  // not pretending the feature exists.
+  // Page module lifecycle -- roster.js and instructions.js both
+  // return a controller with .destroy() (stops their polling timers).
+  // Track whichever one is currently mounted so navigating away -- to
+  // another tab, another project, or back to the list -- tears it
+  // down instead of leaking a timer that keeps polling in the
+  // background forever.
+  // -------------------------------------------------------------
+
+  let currentPageController = null;
+
+  function teardownCurrentPage() {
+    if (currentPageController && typeof currentPageController.destroy === 'function') {
+      currentPageController.destroy();
+    }
+    currentPageController = null;
+  }
+
+  // -------------------------------------------------------------
+  // Placeholder for pages that still genuinely aren't loaded (should
+  // not normally trigger now that Session 2's modules exist -- kept
+  // as a defensive fallback, e.g. if a script tag 404s on a bad
+  // deploy, rather than silently showing a blank page).
   // -------------------------------------------------------------
 
   function renderNotYetBuilt(pageLabel) {
@@ -167,7 +193,7 @@
     panel.className = 'aihub-panel';
     panel.style.textAlign = 'center';
     panel.style.color = 'var(--aihub-text-dim)';
-    panel.innerHTML = `<p style="margin:0 0 4px;font-weight:600;color:var(--aihub-text)">${pageLabel}</p><p style="margin:0;font-size:0.85rem">Not built yet in this lane -- this is Session 2's scope per INSTRUCTIONS.md.</p>`;
+    panel.innerHTML = `<p style="margin:0 0 4px;font-weight:600;color:var(--aihub-text)">${pageLabel}</p><p style="margin:0;font-size:0.85rem">This page's script didn't load -- check the browser console.</p>`;
     appMount.appendChild(panel);
   }
 
@@ -178,6 +204,7 @@
   function render() {
     const route = parseHash();
     appMain.scrollTop = 0; // reset scroll position on every navigation
+    teardownCurrentPage(); // stop whatever was polling on the previous page/project
 
     if (route.name === 'list') {
       hideTabbar();
@@ -193,14 +220,39 @@
 
     if (route.page === 'workspace') {
       if (window.AihubWorkspace) {
+        // workspace.js manages its own state on repeated mount() calls
+        // and has no polling to tear down, so it doesn't return/need a
+        // destroy-style controller the way roster/instructions do.
         window.AihubWorkspace.mount(appMount, route.projectId);
       } else {
         renderNotYetBuilt('Workspace');
       }
     } else if (route.page === 'roster') {
-      renderNotYetBuilt('AI Session Roster');
+      if (window.SessionRoster) {
+        currentPageController = window.SessionRoster.init(appMount, route.projectId);
+      } else {
+        renderNotYetBuilt('AI Session Roster');
+      }
     } else if (route.page === 'instructions') {
-      renderNotYetBuilt('Instructions & Functionalities');
+      if (window.InstructionsPage) {
+        // init() is async (it fetches instructions data before
+        // rendering) -- the controller isn't available until it
+        // resolves, so guard against a stale mount if the user
+        // navigates away again before it finishes.
+        const projectIdAtCallTime = route.projectId;
+        window.InstructionsPage.init(appMount, route.projectId).then((ctl) => {
+          const currentRoute = parseHash();
+          const stillOnSamePage =
+            currentRoute.page === 'instructions' && currentRoute.projectId === projectIdAtCallTime;
+          if (stillOnSamePage) {
+            currentPageController = ctl;
+          } else if (ctl && typeof ctl.destroy === 'function') {
+            ctl.destroy(); // navigated away while this was still loading
+          }
+        });
+      } else {
+        renderNotYetBuilt('Instructions & Functionalities');
+      }
     }
   }
 
