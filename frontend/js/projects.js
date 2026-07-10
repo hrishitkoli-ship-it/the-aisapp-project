@@ -470,8 +470,14 @@
   });
 
   function renderInstallHint(mountEl) {
+    // matchMedia is universal in real browsers but not guaranteed in
+    // every embedding context (some stripped-down webviews). Its
+    // absence should mean "can't tell, assume not installed" -- never
+    // an uncaught crash here, since this runs during the very first
+    // paint of the whole app.
     const isStandalone =
-      window.matchMedia('(display-mode: standalone)').matches ||
+      (typeof window.matchMedia === 'function' &&
+        window.matchMedia('(display-mode: standalone)').matches) ||
       window.navigator.standalone === true; // iOS
 
     if (isStandalone) return null; // already installed, nothing to show
