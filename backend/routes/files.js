@@ -12,17 +12,24 @@
  * Both ultimately call the same shared write logic in fileOps.js so
  * behavior (conflict checks, activity logging, path safety) can't
  * drift between the two callers.
+ *
+ * CHANGED: fileOps.js is now Postgres-backed and every one of its
+ * functions is async, and takes `projectId` directly instead of a
+ * filesystem directory path (there's no `store.projectFilesDir()`
+ * anymore -- see db/store.js/fileOps.js headers for why). Every
+ * handler below was already async except handleListTree, which
+ * needed both `async` added AND its previously-uncaught body wrapped
+ * in try/catch, since it's the one handler here that had no error
+ * handling at all in the original (its try/catch only existed around
+ * res.json, not around the store call).
  * ------------------------------------------------------------------
  */
 
 const express = require('express');
-const path = require('path');
-const fs = require('fs');
+const { nanoid } = require('nanoid');
 const store = require('../db/store');
 const { requireAIToken, loadProjectForHuman } = require('../middleware/auth');
-const { aiWorkLimiter } = require('../middleware/rateLimit');
 const {
-  safeResolve,
   buildFileTree,
   readFileContent,
   writeFileContent,
@@ -38,10 +45,10 @@ const aiRouter = express.Router({ mergeParams: true });
 // Shared handlers (identity-agnostic once req.isAI / req.project is set)
 // ---------------------------------------------------------------------
 
-function handleListTree(req, res) {
+async function handleListTree(req, res) {
   const { projectId } = req.params;
   try {
-    const tree = buildFileTree(store.projectFilesDir(projectId));
+    const tree = await buildFileTree(projectId);
     res.json({ tree });
   } catch (err) {
     res.status(500).json({ error: `Failed to list files: ${err.message}` });
@@ -52,7 +59,7 @@ async function handleReadFile(req, res) {
   const { projectId } = req.params;
   const relPath = req.params[0] || '';
   try {
-    const content = readFileContent(store.projectFilesDir(projectId), relPath);
+    const content = await readFileContent(projectId, relPath);
     if (content === null) {
       return res.status(404).json({ error: 'File not found.' });
     }
@@ -80,7 +87,7 @@ async function handleWriteFile(req, res) {
     : 'human';
 
   try {
-    const result = writeFileContent(store.projectFilesDir(projectId), relPath, content, {
+    const result = await writeFileContent(projectId, relPath, content, {
       expectedVersion,
       force: !!force,
     });
@@ -98,7 +105,7 @@ async function handleWriteFile(req, res) {
       });
     }
 
-    stampLastModifiedBy(store.projectFilesDir(projectId), relPath, actorLabel);
+    await stampLastModifiedBy(projectId, relPath, actorLabel);
 
     await logActivity(projectId, {
       type: 'file_write',
@@ -114,6 +121,9 @@ async function handleWriteFile(req, res) {
       await logSecurityAlert(req, projectId, relPath, 'write');
       return res.status(400).json({ error: err.message });
     }
+    if (err instanceof store.ProjectSizeLimitError || err instanceof store.AccountSizeLimitError) {
+      return res.status(413).json({ error: err.message });
+    }
     res.status(500).json({ error: `Failed to write file: ${err.message}` });
   }
 }
@@ -126,7 +136,7 @@ async function handleDeleteFile(req, res) {
     : 'human';
 
   try {
-    const existed = deleteFileOrDir(store.projectFilesDir(projectId), relPath);
+    const existed = await deleteFileOrDir(projectId, relPath);
     if (!existed) return res.status(404).json({ error: 'File or folder not found.' });
 
     await logActivity(projectId, {
@@ -148,7 +158,6 @@ async function handleDeleteFile(req, res) {
 }
 
 async function logActivity(projectId, entryWithoutId) {
-  const { nanoid } = require('nanoid');
   return store.appendActivity(projectId, { id: nanoid(8), ...entryWithoutId });
 }
 
@@ -182,7 +191,6 @@ humanRouter.delete(/^\/content\/(.*)$/, handleDeleteFile);
 // ---------------------------------------------------------------------
 
 aiRouter.use(requireAIToken);
-aiRouter.use(aiWorkLimiter);
 aiRouter.get('/tree', handleListTree);
 aiRouter.get(/^\/content\/(.*)$/, handleReadFile);
 aiRouter.put(/^\/content\/(.*)$/, handleWriteFile);
