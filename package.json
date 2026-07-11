@@ -12,10 +12,11 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "express": "^4.19.2",
+    "@tursodatabase/serverless": "^1.2.3",
     "cors": "^2.8.5",
-    "nanoid": "^3.3.7",
-    "@tursodatabase/serverless": "^1.2.3"
+    "express": "^4.19.2",
+    "express-rate-limit": "^8.5.2",
+    "nanoid": "^3.3.7"
   },
   "license": "MIT"
 }

@@ -29,6 +29,7 @@ const express = require('express');
 const { nanoid } = require('nanoid');
 const store = require('../db/store');
 const { requireAIToken, loadProjectForHuman } = require('../middleware/auth');
+const { aiWorkLimiter } = require('../middleware/rateLimit');
 
 const humanRouter = express.Router({ mergeParams: true });
 const aiRouter = express.Router({ mergeParams: true });
@@ -171,6 +172,7 @@ humanRouter.post('/assignments/:assignmentId/reject', async (req, res, next) => 
 // ---------------------------------------------------------------------
 
 aiRouter.use(requireAIToken);
+aiRouter.use(aiWorkLimiter);
 aiRouter.get('/', handleGet);
 
 aiRouter.post('/functionalities', async (req, res, next) => {

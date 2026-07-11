@@ -29,6 +29,7 @@ const express = require('express');
 const { nanoid } = require('nanoid');
 const store = require('../db/store');
 const { requireAIToken, loadProjectForHuman } = require('../middleware/auth');
+const { aiWorkLimiter } = require('../middleware/rateLimit');
 const {
   buildFileTree,
   readFileContent,
@@ -191,6 +192,7 @@ humanRouter.delete(/^\/content\/(.*)$/, handleDeleteFile);
 // ---------------------------------------------------------------------
 
 aiRouter.use(requireAIToken);
+aiRouter.use(aiWorkLimiter);
 aiRouter.get('/tree', handleListTree);
 aiRouter.get(/^\/content\/(.*)$/, handleReadFile);
 aiRouter.put(/^\/content\/(.*)$/, handleWriteFile);

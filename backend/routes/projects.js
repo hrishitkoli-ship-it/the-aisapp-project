@@ -38,6 +38,7 @@ const express = require('express');
 const { nanoid } = require('nanoid');
 const store = require('../db/store');
 const { generateToken, hashToken } = require('../utils/tokens');
+const { humanSensitiveLimiter } = require('../middleware/rateLimit');
 
 const router = express.Router();
 
@@ -54,7 +55,7 @@ function logBlockedProjectIdAttempt(req, action, err) {
 
 // POST /api/projects  { name, description }
 // Creates a new project row + metadata + a fresh AI token.
-router.post('/', async (req, res, next) => {
+router.post('/', humanSensitiveLimiter, async (req, res, next) => {
   try {
     const { name, description } = req.body || {};
 
@@ -134,7 +135,7 @@ router.get('/:projectId', async (req, res, next) => {
 
 // POST /api/projects/:projectId/regenerate-token
 // Invalidates the old token immediately and returns a new raw token once.
-router.post('/:projectId/regenerate-token', async (req, res, next) => {
+router.post('/:projectId/regenerate-token', humanSensitiveLimiter, async (req, res, next) => {
   try {
     const { projectId } = req.params;
     let project;
@@ -171,7 +172,7 @@ router.post('/:projectId/regenerate-token', async (req, res, next) => {
 });
 
 // DELETE /api/projects/:projectId - remove a project entirely.
-router.delete('/:projectId', async (req, res, next) => {
+router.delete('/:projectId', humanSensitiveLimiter, async (req, res, next) => {
   try {
     const { projectId } = req.params;
     let project;

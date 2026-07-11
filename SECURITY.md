@@ -188,6 +188,79 @@ store (Redis, or a Turso table once Session 2's migration lands) keyed
 the same way these limiters already are. Not addressed here — flagged
 as a natural follow-up once storage is centralized, not before.
 
+## 4a. Rate limiting was lost during the Turso migration, and restored — plus a bigger finding surfaced while doing that
+
+Session 2's Turso migration (async conversion across every route file,
+new `store.js`, `app.js`/`server.js`/`api/index.js` split for Vercel)
+unintentionally dropped every `.use(aiWorkLimiter)` /
+`.use(humanSensitiveLimiter)` / `globalBackstopLimiter` /
+`aiSurfaceLimiter` wiring except the one that happened to live inside
+`device.js` (which, see below, turned out to be broken for an
+unrelated, bigger reason). `middleware/rateLimit.js` itself was never
+touched — the tier logic and limits are exactly as designed and
+previously verified — only the `.use()` calls wiring it into the new
+async route files and the new `app.js` were lost, almost certainly a
+casualty of a large mechanical rewrite rather than anything deliberate.
+Re-wired into `sessions.js`, `files.js`, `instructions.js`,
+`activity.js` (all `aiWorkLimiter`), `projects.js`
+(`humanSensitiveLimiter` on the three destructive routes), and `app.js`
+(`globalBackstopLimiter` + `aiSurfaceLimiter`).
+
+**Re-verified live** — not just re-wired and trusted — by booting the
+app with a placeholder (non-functional) Turso URL/token and confirming
+rate limiting genuinely engages independent of real database
+connectivity: a single request correctly fails with `500` (proving it
+reached real route logic, not a dead route), and a burst of requests
+is correctly cut off by the appropriate limiter tier (`429`) before the
+remainder even reach the DB-dependent code. This confirms the limiters
+are positioned correctly in the middleware chain — before, not
+alongside, the parts of the app that need a real Turso connection to
+function — which was the property worth actually testing, since the
+live Turso path itself remains unverifiable from this sandbox (§3c).
+
+**A bigger, more urgent finding surfaced while investigating why only
+`device.js` still had rate limiting wired in:** `device.js` (the whole
+device-identity feature — permanent 12-char code embedded in every
+project token, `DELETE /api/device` cascade-delete, everything in
+§2's "Device identity" bullet above) calls `store.getDevice()`,
+`store.saveDevice()`, `store.deleteDevice()`, `store.projectDir()`, and
+`store.clearProjectIndex()` — **none of which exist on the new
+Turso-backed `store.js`** (confirmed directly: `Object.keys(store)`
+lists 20 exports, none of the five above among them). `schema.sql` has
+no trace of a device table or device-related column anywhere either.
+`tokens.js` has been reverted to its pre-device-code form —
+`generateToken()` takes no arguments and produces a token with no
+embedded permanent-code prefix at all, exactly matching what it looked
+like before that feature was ever built. `projects.js`'s creation route
+calls `generateToken()` with zero arguments, consistent with that
+reversion, not a mismatched leftover call.
+
+This reads like an earlier version of these specific files (predating
+the device-identity work) was used as the base for part of the Turso
+rewrite, rather than a deliberate decision to drop the feature — there
+is no comment or note anywhere in the new schema or store explaining a
+choice to remove it, which is inconsistent with how carefully
+documented the rest of this migration is (the honest network-
+verification caveat, the real `ON DELETE CASCADE` reliability bug that
+WAS caught and explained). Every route in `device.js` will throw the
+instant it's invoked — this isn't conditional on live Turso
+connectivity; calling `undefined()` fails regardless of what's on the
+other end of the network.
+
+**Not fixed here.** Restoring this means adding a device table (or
+equivalent columns) back to `schema.sql` and the corresponding
+functions back to `store.js` — both files Session 2 owns and has been
+deliberate about (the size-cap trigger design, the `ON DELETE CASCADE`
+reliability fix). Reconstructing that unilaterally, on top of someone
+else's actively-evolving schema, without their input on how they'd
+want it to fit alongside the size-cap/trigger design they already
+built, risks a worse outcome than flagging it clearly and letting
+Session 2 (or whoever picks this up) decide how it should actually fit
+back in. `device.js` is deliberately left UNMOUNTED in `app.js` (no
+`app.use('/api/device', ...)` line was added back) rather than wired up
+broken — better for it to be visibly absent than silently 500ing on
+every call once this is live.
+
 ## 5. Things explicitly out of scope for this document / this session
 
 - **Real authentication on human-facing routes** (§3b). Known gap,
@@ -202,6 +275,9 @@ as a natural follow-up once storage is centralized, not before.
   assumes a local filesystem even in the Turso-groundwork files above;
   Vercel's ephemeral filesystem means this needs its own answer (blob
   store, or a `files` table in Turso too), not decided here.
+- **Restoring device identity to the new Turso schema** (§4a). Flagged
+  as the most urgent open item from this pass — bigger than a wiring
+  fix, needs Session 2's input on schema fit, not solved here.
 
 ## 6. For future sessions: the original warning still applies
 

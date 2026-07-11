@@ -314,6 +314,59 @@ audit to ongoing security & safety work):**
   build script) that had landed concurrently and needed merging before
   continuing.
 
+**Second follow-up (same session, after Session 2's Turso migration
+landed) — human reported rate limiting had been accidentally lost;
+asked to restore it and continue toward public-deployment prep:**
+
+- **Confirmed the report was accurate before touching anything.**
+  `middleware/rateLimit.js` itself was fully intact (tier logic, limits,
+  the earlier stacking-bug fix — all untouched), but the `.use()` calls
+  wiring it into `sessions.js`, `files.js`, `instructions.js`,
+  `activity.js`, `projects.js`, and the new `app.js` had all been lost
+  — almost certainly a casualty of the large mechanical async-conversion
+  rewrite those files went through, not anything deliberate. Only
+  `device.js` still referenced it (see below for why that turned out to
+  matter less than it first appeared to).
+- **Re-wired all five tiers back in**, learning from the two near-miss
+  regressions in the original build: checked each target line's
+  uniqueness with `grep -c` BEFORE every `str_replace` call this time,
+  and diffed every touched file against the last commit immediately
+  after each individual edit rather than batching all edits before
+  checking any — both files that broke last time (`sessions.js`'s
+  `GET /` route, `files.js`'s `GET /tree` route) were explicitly
+  re-verified present and correct via direct `grep` this pass, not just
+  a clean syntax check.
+- **Re-verified live**, working around this sandbox's lack of real
+  Turso connectivity: booted the app with a placeholder (non-functional)
+  Turso URL/token and confirmed rate limiting genuinely engages
+  independent of database connectivity — single requests correctly fail
+  with `500` (proving they reached real route logic), and request bursts
+  are correctly cut off with `429` by the right tier before the
+  remainder would even reach DB-dependent code. This is the property
+  that mattered to test given the live-Turso-path itself stays
+  unverifiable from here.
+- **Bigger finding, surfaced while investigating why only `device.js`
+  still had rate limiting wired in:** the entire device-identity feature
+  (permanent 12-char code, cascade-delete, everything documented in this
+  same ledger entry's first follow-up) is missing from the new
+  Turso-backed `store.js` and `schema.sql` entirely — not partially
+  migrated, genuinely absent, with `tokens.js` reverted to its
+  pre-device-code form (`generateToken()` takes no arguments again) and
+  `projects.js`'s creation route calling it accordingly. Every route in
+  `device.js` will throw immediately when invoked, Turso-reachable or
+  not, since it calls five `store` functions that no longer exist.
+  Deliberately did NOT wire `device.js` into the new `app.js` (no
+  broken route silently 500ing in production) and deliberately did NOT
+  unilaterally reconstruct the missing table/functions myself — that's
+  real schema-design territory Session 2 owns and has been careful and
+  deliberate about (the account/project size-cap triggers, the real
+  `ON DELETE CASCADE` reliability bug Session 2 caught and fixed
+  correctly). Full writeup, including exactly what's missing and why
+  this reads like an accidental base-version mix-up rather than a
+  deliberate removal, in `SECURITY.md` §4a — flagged there as the most
+  urgent open item from this whole session, ahead of anything else in
+  the "not yet closed" list.
+
 ### Session 5 — Testing, docs, and integration
 **Status: shipped.** Full route smoke test (`SESSION5_TEST_REPORT.md`),
 conflict-detection end-to-end verification, confirmed the AI→approve

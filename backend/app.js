@@ -34,6 +34,10 @@ const sessionsRoutes = require('./routes/sessions');
 const instructionsRoutes = require('./routes/instructions');
 const activityRoutes = require('./routes/activity');
 const filesRoutes = require('./routes/files');
+const {
+  globalBackstopLimiter,
+  aiSurfaceLimiter,
+} = require('./middleware/rateLimit');
 
 const app = express();
 
@@ -45,6 +49,14 @@ app.use(express.json({ limit: '2mb' }));
 // in front of it.
 app.use(cors());
 
+// Global rate-limiting backstop: applies to every request, before
+// anything else. Not abuse-detection (the tiered limiters below and in
+// each route file handle that) -- this is purely the "make sure the
+// app doesn't crash" safety net against any runaway loop, buggy or
+// malicious, on either side of the API. See middleware/rateLimit.js's
+// header comment for the full reasoning and the other tiers.
+app.use(globalBackstopLimiter);
+
 // ---------------------------------------------------------------------
 // Human-facing routes (browser, no token)
 // ---------------------------------------------------------------------
@@ -55,12 +67,22 @@ app.use('/api/projects/:projectId/activity', activityRoutes.humanRouter);
 app.use('/api/projects/:projectId/files', filesRoutes.humanRouter);
 
 // ---------------------------------------------------------------------
-// AI-facing routes (token required)
+// AI-facing routes (token required).
+//
+// aiSurfaceLimiter runs BEFORE each router below (and therefore before
+// that router's own requireAIToken, applied inside the route files
+// themselves) -- deliberate, not an oversight: it's the only limiter
+// keyed by IP rather than project, specifically so it can catch token
+// brute-forcing/auth-hammering BEFORE a token is known to be valid. A
+// project-keyed limiter (aiWorkLimiter, applied inside each route file
+// right after requireAIToken) structurally cannot do this job, since an
+// attacker without a valid token never has a project to be keyed by.
+// See middleware/rateLimit.js for the full tier breakdown.
 // ---------------------------------------------------------------------
-app.use('/api/ai/:projectId/sessions', sessionsRoutes.aiRouter);
-app.use('/api/ai/:projectId/instructions', instructionsRoutes.aiRouter);
-app.use('/api/ai/:projectId/activity', activityRoutes.aiRouter);
-app.use('/api/ai/:projectId/files', filesRoutes.aiRouter);
+app.use('/api/ai/:projectId/sessions', aiSurfaceLimiter, sessionsRoutes.aiRouter);
+app.use('/api/ai/:projectId/instructions', aiSurfaceLimiter, instructionsRoutes.aiRouter);
+app.use('/api/ai/:projectId/activity', aiSurfaceLimiter, activityRoutes.aiRouter);
+app.use('/api/ai/:projectId/files', aiSurfaceLimiter, filesRoutes.aiRouter);
 
 // ---------------------------------------------------------------------
 // Static frontend (unchanged from before this migration -- serving
