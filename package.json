@@ -6,16 +6,16 @@
   "scripts": {
     "start": "node backend/server.js",
     "dev": "node --watch backend/server.js",
-    "vercel-build": "node scripts/vercel-build-public.js"
+    "setup-db": "node scripts/setup-turso-schema.js"
   },
   "engines": {
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "cors": "^2.8.5",
     "express": "^4.19.2",
-    "express-rate-limit": "^8.5.2",
-    "nanoid": "^3.3.7"
+    "cors": "^2.8.5",
+    "nanoid": "^3.3.7",
+    "@tursodatabase/serverless": "^1.2.3"
   },
   "license": "MIT"
 }
