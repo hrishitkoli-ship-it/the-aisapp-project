@@ -6,110 +6,60 @@ sessions against one project from a phone. Ironically, this project itself
 is being built by multiple AI sessions — you are one of them.
 
 Repo: `hrishitkoli-ship-it/the-aisapp-project` (private)
-Stack: Node 18+ / Express, Turso (libSQL) datastore, vanilla JS frontend.
-All 5 original lanes shipped; now mid-way through Vercel/Turso migration
--- see "Current state" below for what's done and the one open blocker.
+Stack: Node 18+ / Express / vanilla JS backend, frontend in progress
+(Session 1 + Session 3 lanes done; Session 2 still outstanding -- see below).
 No native deps (no SQLite, no Docker) — everything must run in Termux.
 
 ---
 
 ## Current state (as of this write-up)
 
-**⚠️ THIS SECTION WAS STALE FOR A WHILE — rewritten to match reality.**
-The version below this note previously said `db/store.js` was the
-original JSON-file datastore (✅ DONE) and that the Roster/Instructions
-frontend pages were still a gap (❌). Neither has been true for some
-time — this doc's top-of-file summary had fallen behind its own Session
-Ledger further down, which is a bad sign for anyone reading top-to-
-bottom expecting the first section to be authoritative. If you're
-reading this and something below looks wrong again, the Session Ledger
-(further down this file) and `SECURITY.md` are the more likely-to-be-
-current sources — cross-check before trusting a top-level summary like
-this one at face value.
-
 ```
 the-aisapp-project/
 ├── backend/
-│   ├── app.js                Express app definition (no .listen())  ✅ DONE
-│   ├── server.js             Thin local-dev wrapper, calls .listen() ✅ DONE
-│   ├── db/
-│   │   ├── store.js          Turso (libSQL) datastore               ✅ DONE (S2)
-│   │   │                     — device-identity functions MISSING,
-│   │   │                       see ⚠️ below
-│   │   └── schema.sql        Turso schema + size-cap triggers        ✅ DONE (S2)
-│   │                         — no device table, see ⚠️ below
-│   ├── middleware/
-│   │   ├── auth.js           Human vs AI identity                   ✅ DONE
-│   │   └── rateLimit.js      4-tier rate limiting                   ✅ DONE (S4)
+│   ├── server.js            Entry point, route wiring        ✅ DONE
+│   ├── db/store.js          JSON-file datastore + locking     ✅ DONE
+│   ├── middleware/auth.js   Human vs AI identity              ✅ DONE
 │   ├── routes/
-│   │   ├── activity.js       Read-only timeline                     ✅ DONE
-│   │   ├── files.js          Tree/read/write/delete + conflict      ✅ DONE
-│   │   ├── instructions.js   Notes/functionalities/assignments      ✅ DONE
-│   │   ├── projects.js       Create/list/regen-token/delete         ✅ DONE
-│   │   ├── sessions.js       AI Session Roster                      ✅ DONE
-│   │   └── device.js         Device identity + cascade-delete       ❌ BROKEN
-│   │                         — calls 5 store.js functions that no
-│   │                           longer exist post-Turso-migration.
-│   │                           Deliberately NOT mounted in app.js.
-│   │                           See ⚠️ below and SECURITY.md §4a.
+│   │   ├── activity.js      Read-only timeline                ✅ DONE
+│   │   ├── files.js         Tree/read/write/delete + conflict ✅ DONE
+│   │   ├── instructions.js  Notes/functionalities/assignments ✅ DONE
+│   │   ├── projects.js      Create/list/regen-token/delete    ✅ DONE
+│   │   └── sessions.js      AI Session Roster                 ✅ DONE
 │   └── utils/
-│       ├── fileOps.js        Path safety + versioning                ✅ DONE
-│       └── tokens.js         Token gen/hash/verify                   ✅ DONE
-│                              — no permanent device-code prefix,
-│                                see ⚠️ below
-├── api/index.js               Vercel entry point (exports app.js)    ✅ DONE (S2)
-├── vercel.json                 Vercel routing config                 ✅ DONE (S2)
-├── frontend/                   All 5 lanes shipped — S1/S2/S3 pages,
-│                                roster.js, instructions.js, PWA
-│                                manifest/service-worker/icons all done
-├── projects/                   Runtime data, gitignored (JSON-era —
-│                                mostly vestigial now that Turso holds
-│                                real data; harmless to leave as-is)
-├── package.json                 Now includes @tursodatabase/serverless,
-│                                 express-rate-limit
-├── SECURITY.md                  Trust model, verified hardening, and
-│                                 open gaps — READ THIS
-└── README.md                    Original API reference — may be stale
-                                  on the storage layer specifically
-                                  post-Turso; SECURITY.md is more
-                                  current on that front
+│       ├── fileOps.js       Path safety + versioning          ✅ DONE
+│       └── tokens.js        Token gen/hash/verify             ✅ DONE
+├── frontend/
+│   ├── index.html            App shell, PWA meta, script loads ✅ DONE (S1)
+│   ├── manifest.json          PWA manifest                     ✅ DONE (S1)
+│   ├── service-worker.js      Offline app-shell caching         ✅ DONE (S1)
+│   ├── css/
+│   │   ├── base.css           Shared tokens, light+dark, shell  ✅ DONE (S1)
+│   │   ├── projects.css       Project list/create/manage UI     ✅ DONE (S3)
+│   │   └── workspace.css      Tree/editor/diff view             ✅ DONE (S1)
+│   ├── js/
+│   │   ├── theme.js           Dark/light toggle                 ✅ DONE (S1)
+│   │   ├── router.js          Hash router + app-shell chrome     ✅ DONE (S1)
+│   │   ├── projects.js        ProjectManager (list/create/token) ✅ DONE (S3)
+│   │   └── pages/
+│   │       ├── workspace.js   Page 1: tree/editor/conflict UI   ✅ DONE (S1)
+│   │       ├── roster.js      Page 2: AI Session Roster          ❌ GAP (S2)
+│   │       └── instructions.js Page 3: Instructions/approval gate ❌ GAP (S2)
+│   └── icons/                 PWA icons (192/512)                ✅ DONE (S1)
+├── projects/                 Runtime data, gitignored
+├── package.json               express, cors, nanoid only
+└── README.md                  Full API reference — READ THIS FIRST
 ```
 
-**⚠️ BLOCKING ITEM FOR SESSION 2 (or whoever owns `schema.sql`/`store.js`
-next): the device-identity feature is missing from the Turso schema
-entirely** — not partially migrated, genuinely absent. No device table,
-`tokens.js` reverted to producing tokens with no permanent-code prefix,
-`routes/device.js`'s five routes will throw immediately when called
-since they reference `store.getDevice`/`saveDevice`/`deleteDevice`/
-`projectDir`/`clearProjectIndex`, none of which exist on the current
-`store.js`. This looks like an earlier pre-device-identity version of
-these files got used as a base for part of the Turso rewrite, rather
-than a deliberate removal — nothing in the new schema or store explains
-a decision to drop it, unlike the rest of that migration (which is
-otherwise carefully documented, including an honest note about the live
-Turso connection being unverified from a sandboxed environment, and a
-real `ON DELETE CASCADE` reliability bug that was caught and correctly
-fixed). Full detail, including exactly what's missing, in `SECURITY.md`
-§4a. Session 4 deliberately did NOT reconstruct this unilaterally —
-it's schema-design territory Session 2 owns and has been careful about
-(the size-cap triggers), and doing it without their input on how it
-should fit alongside that design risks a worse outcome than flagging it
-clearly. `device.js` is left unmounted in `app.js` rather than wired up
-broken.
-
-**Everything else is functionally complete.** All five frontend lanes
-shipped and were tested end-to-end (see Session 5's ledger entry and
-`SESSION5_TEST_REPORT.md`). The backend runs on Turso instead of local
-JSON files (S2's migration, chosen over Supabase per the human's
-decision — see the Session 2 ledger entry for the full reasoning), is
-structured for Vercel deployment (`app.js`/`api/index.js` split, S2),
-and has 4-tier rate limiting (S4, restored once after an accidental
-loss during the Turso migration — see the Session 4 ledger entry).
-`README.md` was written for the original JSON-file architecture and may
-be stale specifically on storage-layer details now that Turso has
-landed — `SECURITY.md` is the more current source for anything
-security- or architecture-related; this doc's Session Ledger further
-down is the most current source for "what actually happened and when."
+**The backend and Session 1/3's frontend lanes are functionally complete
+and tested end-to-end against the real server (not mocked responses) --
+see git log for Session 1's verification notes.** The remaining gap is
+Session 2's two pages (Roster, Instructions), which the router already
+routes to with an honest "not built yet" placeholder rather than a crash,
+so the app is fully navigable and usable for Workspace + project management
+right now. Read `README.md` in the repo root before writing any code — it
+documents every route, the two-identity model, and conflict handling in
+detail.
 
 ---
 
@@ -224,8 +174,19 @@ Audit, don't rebuild — the backend patterns are already good. Focus on:
 
 ## Coordination protocol
 
-- **Before starting work**, `GET /api/ai/:projectId/files/tree` and check
-  `git log` / recent activity — someone may have already touched your lane.
+- **Before starting any work, every time — not just on your first message
+  in a session — pull the latest `main` and check for anything addressed
+  to you.** That means: `git pull` (or re-fetch the tree via the API),
+  check recent commits/activity since you last looked, and check for any
+  session-requests or `IDEAS.md` entries naming your lane. Another
+  session may have landed something in the time since your last turn —
+  including changes to a file you're about to edit. This is not
+  optional, and it's not just a first-message thing: check again after
+  any human-in-the-loop pause, not just at session start.
+- **Commit and push after every meaningful change**, not in one big
+  batch at the end. Other sessions can only see what's actually pushed —
+  work sitting uncommitted locally is invisible to everyone else and
+  defeats the whole point of a shared, git-connected coordination model.
 - **Use `expectedVersion`** on every write once you've read a file once.
   Don't skip this because it's "probably fine" — that's the exact scenario
   it exists for with 5 concurrent sessions.
@@ -237,6 +198,11 @@ Audit, don't rebuild — the backend patterns are already good. Focus on:
   `POST /instructions/assignments` — it stays `pending` until the human
   approves it in the UI. Don't treat a proposal as approved just because
   it made sense to you.
+- **Found something important outside your own lane while working?**
+  Don't sit on it and don't silently go fix someone else's file mid-edit
+  either. Drop it in `IDEAS.md` (see that file's own rules — propose
+  only, the human approves) so it's visible and tracked, not lost in a
+  chat transcript only one person read.
 - If you hit a `409` conflict on a shared file (likely `server.js`,
   `package.json`, or shared frontend CSS), re-read, re-apply your diff on
   top of the current version, and re-submit. Never `force: true` without
@@ -258,164 +224,58 @@ Also authored the placeholder `frontend/index.html` (see that file's own
 header comment — Session 1 owns replacing it) purely to unblock the
 SPA-fallback 500 documented in `KNOWN_ISSUES.md`.
 
+**Follow-up (same session, human-requested): Vercel readiness + storage
+hardening.**
+- Root `server.js` shim + `scripts/vercel-build-public.js` (copies
+  `frontend/` → gitignored `public/` at build time) so Vercel's
+  zero-config Express detection and static-asset CDN serving both work
+  correctly. `frontend/` stays the single source of truth;
+  `backend/server.js` and local `npm start` are untouched. Confirmed
+  against current Vercel docs (not stale assumptions — an earlier draft
+  of this got the `.listen()` requirement wrong and was corrected after
+  checking).
+- **Storage hardening**: `backend/db/store.js` writes (and the
+  module-load-time directory check) now catch read-only-filesystem
+  failures and throw a typed `StorageReadOnlyError` (503, clear
+  message) instead of a raw fs error. `server.js`'s error handler
+  respects a typed error's `statusCode` (additive only — every existing
+  error path, tested, is unchanged). All three write routes in
+  `routes/projects.js` (create/regenerate-token/delete) now properly
+  `try/catch` + `next(err)` instead of letting a rejected promise from
+  an async handler go uncaught (Express 4 doesn't auto-route those to
+  error middleware — `create` had no try/catch at all before this).
+  Verified against a **real** read-only bind mount (not a mock), not
+  just plausible-looking code: confirmed all three routes return a
+  clean 503 instead of a raw 500/hang, confirmed reads still work fine
+  under the same condition, confirmed the server doesn't crash, and
+  confirmed via a full regression suite that normal writable operation
+  and every existing error path (400s) are completely unaffected.
+  Along the way, the first version of this fix only checked for
+  `EROFS`/`EACCES` — a real read-only-mount test in this exact sandbox
+  produced `ENOENT` instead, which the initial check missed entirely.
+  Widened to a shared `isReadOnlyStorageError()` helper covering
+  `EROFS`/`EACCES`/`ENOENT`/`EPERM`, deliberately excluding things like
+  `ENOSPC` (disk full) so a real, different problem on an actual device
+  still surfaces as-is rather than getting mislabeled.
+- **This is a stopgap, not the real fix.** It makes the failure mode
+  honest (a clear 503) instead of silent/confusing — it does not add
+  persistent storage. Session 2 is building that (Turso) as of this
+  writing; this doesn't duplicate or compete with that, and should
+  likely be simplified or removed once real persistent storage lands.
+- Reinforced the coordination-protocol section above (pull latest +
+  check requests every time, not just at session start; commit/push
+  incrementally, not in one batch) per explicit human request.
+- Filed two ideas in `IDEAS.md` rather than building them: the same
+  missing-try/catch pattern found in `routes/projects.js` likely exists
+  in other route files too (didn't audit those — didn't want to touch
+  files another session might have open), and a small note on this
+  stopgap's removal once Turso lands.
+
 ### Session 4 — Security & hardening review
 **Status: shipped.** Audited `fileOps.js`/`store.js` path-safety, found
 and fixed the `projectDir()` traversal gap on the DELETE route (see
 `db/store.js` header comment — confirmed via isolated PoC, not
 theoretical). Confirmed token comparison is constant-time throughout.
-
-**Follow-up (same session, human-requested — rescoped from a one-time
-audit to ongoing security & safety work):**
-
-- **Permanent device identity.** 12-char alphanumeric code, generated
-  once per device (`db/store.js`'s `getDevice`/`saveDevice`/
-  `getOrCreateDeviceCode`), embedded as a fixed prefix in every
-  project's token (`aihub_<12-char code><rotatable key>` —
-  `utils/tokens.js`). Same code across every project a human creates on
-  one device; only the key portion rotates on regenerate. Never
-  regenerates itself — only explicit, confirmed deletion
-  (`DELETE /api/device`, requires `{ "confirm": true }`) removes it,
-  which cascades to deleting every project under it (their tokens embed
-  a code that no longer exists anywhere regardless). New file:
-  `routes/device.js`. Verified end-to-end against the real server,
-  including a live-caught crash bug (see commit history): the delete
-  route originally called a non-existent `store` function, AND had no
-  try/catch around its async body — Express 4 doesn't auto-catch
-  rejected promises from async handlers the way Express 5 does, so that
-  typo took the entire server process down, not just that request.
-  Fixed in this file; flagged as a likely-present gap in other async
-  route handlers across the codebase, not retrofitted everywhere (out
-  of scope for this pass).
-- **`SKILL.md`** (repo root) — agent-facing guide for authenticating,
-  registering in the roster, safe file writes, cross-session requests,
-  and the approval-gate boundary. Grounded in the actual route
-  inventory (read every route file, not written from memory) and
-  validated live — every documented request shape was actually sent
-  against the real server. Caught and fixed one real inaccuracy in the
-  process: the draft said to source a file's `version` from a *read*
-  response; testing showed `GET /files/content/<path>` never returns
-  one at all — only a *write* response does. Not yet wired to a
-  "downloadable from site settings" UI, since no settings page exists
-  anywhere in the frontend yet (checked before writing) — that's open
-  frontend work for whichever session builds it.
-- **Rate limiting**, once the human confirmed this app is moving toward
-  a public Vercel deployment (see `SECURITY.md` §3 for the fuller
-  threat-model shift this implies — the short version: `0.0.0.0`
-  binding was always intentional for LAN reachability, and is now also
-  the exact mechanism by which "public" becomes possible). New file
-  `middleware/rateLimit.js`, four tiers (global backstop, IP-keyed
-  pre-auth surface limiter, project-keyed post-auth work limiter,
-  IP-keyed limiter on specific destructive human routes only) — full
-  reasoning in that file's header. Verified live, every tier, by
-  actually tripping each one against the real running server, not just
-  configured and trusted. Found and fixed a real design bug in the
-  process: the pre-auth and post-auth AI limiters stack (same request
-  path, in sequence) rather than being alternatives, so the lower of
-  the two silently wins — the surface limiter's original 100/min value
-  was capping ALL legitimate AI traffic well under the work limiter's
-  intended 300/min allowance for the realistic common case (one agent,
-  one project, one IP). Caught via live testing (150 requests, one
-  valid token, expected all to succeed — only 100 did), not by
-  inspection; fixed by raising the surface limiter well above the work
-  limiter's ceiling. Two near-miss regressions also happened and were
-  caught during this same pass, worth naming plainly rather than
-  glossing over: two `str_replace` edits (adding the work limiter into
-  `sessions.js` and `files.js`) accidentally matched non-unique
-  surrounding text and silently deleted the `GET /` session-list route
-  and the `GET /tree` file-listing route respectively. Both caught by
-  diffing every touched file against the last commit before trusting a
-  clean syntax check, both restored and re-verified live before
-  pushing.
-- **`SECURITY.md`** (repo root) — the deliverable from this lane's
-  *original* scope (see the top of the Non-negotiable rules — "so
-  future sessions don't 'fix' it into a cloud auth system by mistake")
-  that was never actually written before now. Documents the trust
-  model as it originally was, what's verified about it this session,
-  and — importantly — the real, NOT-yet-closed gap that going public
-  opens up: every human-facing route (`/api/projects/...`,
-  `/api/device`) has zero authentication, by original design, for a
-  LAN-only tool. Rate limiting slows down abuse of that gap; it does
-  not close it. Real authentication on human routes is flagged
-  explicitly as an open, undecided, bigger architectural question — not
-  something this pass took on, and not something to assume is handled
-  just because other hardening landed around it.
-- **Turso migration: reference-only groundwork, NOT this lane's
-  deliverable.** Before the human confirmed Session 2 owns the actual
-  Turso migration, this session built `db/schema.sql` (relational
-  schema derived from the current JSON shapes, loaded and exercised
-  against a real SQLite engine — composite keys, cascade deletes, and
-  unique constraints all confirmed correct) and `db/store.turso.js` (a
-  same-signature replacement for `store.js`, using
-  `@tursodatabase/serverless` specifically because `@libsql/client`
-  pulls in native binaries that conflict with this repo's own "no
-  native deps" rule — confirmed via `find node_modules -name "*.node"`
-  before and after switching packages). **Neither file's Turso
-  connection has been live-verified** — this sandbox has no network
-  egress to `*.turso.io` (confirmed: "Host not in allowlist," a sandbox
-  limitation, not a credentials problem). Left in the repo as a
-  starting reference for Session 2, not a finished handoff — Session 2
-  should verify the real connection independently and is free to
-  diverge from this shape. Full detail in `SECURITY.md` §3c.
-- Read the last 5 commits and this document fresh before starting this
-  follow-up work, per the human's explicit ask, rather than assuming
-  prior context still held — found the frontend had moved from "total
-  gap" to "all five lanes shipped" since this session's own first read,
-  and found real Vercel-deployment-prep commits (root entrypoint shim,
-  build script) that had landed concurrently and needed merging before
-  continuing.
-
-**Second follow-up (same session, after Session 2's Turso migration
-landed) — human reported rate limiting had been accidentally lost;
-asked to restore it and continue toward public-deployment prep:**
-
-- **Confirmed the report was accurate before touching anything.**
-  `middleware/rateLimit.js` itself was fully intact (tier logic, limits,
-  the earlier stacking-bug fix — all untouched), but the `.use()` calls
-  wiring it into `sessions.js`, `files.js`, `instructions.js`,
-  `activity.js`, `projects.js`, and the new `app.js` had all been lost
-  — almost certainly a casualty of the large mechanical async-conversion
-  rewrite those files went through, not anything deliberate. Only
-  `device.js` still referenced it (see below for why that turned out to
-  matter less than it first appeared to).
-- **Re-wired all five tiers back in**, learning from the two near-miss
-  regressions in the original build: checked each target line's
-  uniqueness with `grep -c` BEFORE every `str_replace` call this time,
-  and diffed every touched file against the last commit immediately
-  after each individual edit rather than batching all edits before
-  checking any — both files that broke last time (`sessions.js`'s
-  `GET /` route, `files.js`'s `GET /tree` route) were explicitly
-  re-verified present and correct via direct `grep` this pass, not just
-  a clean syntax check.
-- **Re-verified live**, working around this sandbox's lack of real
-  Turso connectivity: booted the app with a placeholder (non-functional)
-  Turso URL/token and confirmed rate limiting genuinely engages
-  independent of database connectivity — single requests correctly fail
-  with `500` (proving they reached real route logic), and request bursts
-  are correctly cut off with `429` by the right tier before the
-  remainder would even reach DB-dependent code. This is the property
-  that mattered to test given the live-Turso-path itself stays
-  unverifiable from here.
-- **Bigger finding, surfaced while investigating why only `device.js`
-  still had rate limiting wired in:** the entire device-identity feature
-  (permanent 12-char code, cascade-delete, everything documented in this
-  same ledger entry's first follow-up) is missing from the new
-  Turso-backed `store.js` and `schema.sql` entirely — not partially
-  migrated, genuinely absent, with `tokens.js` reverted to its
-  pre-device-code form (`generateToken()` takes no arguments again) and
-  `projects.js`'s creation route calling it accordingly. Every route in
-  `device.js` will throw immediately when invoked, Turso-reachable or
-  not, since it calls five `store` functions that no longer exist.
-  Deliberately did NOT wire `device.js` into the new `app.js` (no
-  broken route silently 500ing in production) and deliberately did NOT
-  unilaterally reconstruct the missing table/functions myself — that's
-  real schema-design territory Session 2 owns and has been careful and
-  deliberate about (the account/project size-cap triggers, the real
-  `ON DELETE CASCADE` reliability bug Session 2 caught and fixed
-  correctly). Full writeup, including exactly what's missing and why
-  this reads like an accidental base-version mix-up rather than a
-  deliberate removal, in `SECURITY.md` §4a — flagged there as the most
-  urgent open item from this whole session, ahead of anything else in
-  the "not yet closed" list.
 
 ### Session 5 — Testing, docs, and integration
 **Status: shipped.** Full route smoke test (`SESSION5_TEST_REPORT.md`),
