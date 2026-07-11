@@ -1,24 +1,110 @@
 /**
  * server.js
  * ------------------------------------------------------------------
- * Local/Termux dev entry point -- unchanged workflow from before
- * this migration (`npm start` / `npm run dev` / `node backend/server.js`
- * all still work exactly as before). All actual app configuration
- * now lives in app.js (see that file's header for why); this file
- * just adds the app.listen() call that only makes sense for a real,
- * persistent local process -- NOT for Vercel, which uses
- * api/index.js instead and never calls .listen() at all.
+ * Entry point. Wires up:
+ *   - JSON body parsing + CORS (so an external AI process running
+ *     anywhere on the same device/network can call the API)
+ *   - Human-facing routes under /api/projects/...
+ *   - AI-facing (token-gated) routes under /api/ai/...
+ *   - Static frontend serving (the PWA itself)
+ *
+ * Run with: node backend/server.js
+ * Or:       npm start
  * ------------------------------------------------------------------
  */
 
-const app = require('./app');
+const express = require('express');
+const cors = require('cors');
+const path = require('path');
+const os = require('os');
 
+const projectsRoutes = require('./routes/projects');
+const deviceRoutes = require('./routes/device');
+const filesRoutes = require('./routes/files');
+const sessionsRoutes = require('./routes/sessions');
+const instructionsRoutes = require('./routes/instructions');
+const activityRoutes = require('./routes/activity');
+
+const app = express();
 const PORT = process.env.PORT || 7077;
 
+app.use(cors()); // Local tool, single device -- open CORS is fine here.
+app.use(express.json({ limit: '15mb' })); // generous limit for pasted code files
+
+// -----------------------------------------------------------------
+// Human-facing API (browser UI). No token required -- see auth.js
+// header comment for why: the device itself is the trust boundary.
+// -----------------------------------------------------------------
+app.use('/api/projects', projectsRoutes);
+app.use('/api/device', deviceRoutes);
+app.use('/api/projects/:projectId/files', filesRoutes.humanRouter);
+app.use('/api/projects/:projectId/sessions', sessionsRoutes.humanRouter);
+app.use('/api/projects/:projectId/instructions', instructionsRoutes.humanRouter);
+app.use('/api/projects/:projectId/activity', activityRoutes.humanRouter);
+
+// -----------------------------------------------------------------
+// AI-facing API (external agents). Every route here requires
+// "Authorization: Bearer <project-token>".
+// -----------------------------------------------------------------
+app.use('/api/ai/:projectId/files', filesRoutes.aiRouter);
+app.use('/api/ai/:projectId/sessions', sessionsRoutes.aiRouter);
+app.use('/api/ai/:projectId/instructions', instructionsRoutes.aiRouter);
+app.use('/api/ai/:projectId/activity', activityRoutes.aiRouter);
+
+// -----------------------------------------------------------------
+// Frontend static files (the PWA)
+// -----------------------------------------------------------------
+const FRONTEND_DIR = path.join(__dirname, '..', 'frontend');
+app.use(express.static(FRONTEND_DIR, {
+  setHeaders: (res, filePath) => {
+    // Service worker must never be cached, or updates to it won't be
+    // picked up by devices that already installed the PWA.
+    if (filePath.endsWith('service-worker.js')) {
+      res.setHeader('Cache-Control', 'no-cache');
+    }
+  },
+}));
+
+// SPA fallback: any non-API GET request serves index.html so client-side
+// routing (#/project/:id/workspace etc.) works on refresh.
+app.get(/^\/(?!api\/).*/, (req, res) => {
+  res.sendFile(path.join(FRONTEND_DIR, 'index.html'));
+});
+
+app.use((req, res) => {
+  res.status(404).json({ error: 'Not found.' });
+});
+
+// Basic error handler so a thrown error becomes JSON, not an HTML stack trace.
+app.use((err, req, res, next) => {
+  console.error(err);
+  // Typed errors (e.g. StorageReadOnlyError) carry their own correct
+  // status and an already-clear message -- use it as-is. Anything else
+  // keeps the original generic 500 behavior unchanged.
+  if (err.statusCode) {
+    return res.status(err.statusCode).json({ error: err.message });
+  }
+  res.status(500).json({ error: 'Internal server error.', detail: err.message });
+});
+
+function getLocalNetworkAddress() {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) return iface.address;
+    }
+  }
+  return null;
+}
+
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`
-  AI Collaborative Hub is running
-  --------------------------------
-  Local:   http://localhost:${PORT}
-  `);
+  const lan = getLocalNetworkAddress();
+  console.log('');
+  console.log('  AI Collaborative Hub is running');
+  console.log('  --------------------------------');
+  console.log(`  Local:   http://localhost:${PORT}`);
+  if (lan) {
+    console.log(`  Network: http://${lan}:${PORT}   (use this for other devices / AI agents on same network)`);
+  }
+  console.log('');
 });
