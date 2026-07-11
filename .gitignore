@@ -1,6 +1,11 @@
 # Dependencies
 node_modules/
 
+# Vercel build artifact -- generated fresh from frontend/ on every
+# build by scripts/vercel-build-public.js. frontend/ is the source of
+# truth; never hand-edit or commit public/.
+public/
+
 # Runtime data -- every user's actual projects/files/tokens live here.
 # This is generated at runtime (backend/db/store.js auto-creates it),
 # and must never be committed: it's local, per-device user data, not
