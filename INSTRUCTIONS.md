@@ -6,60 +6,110 @@ sessions against one project from a phone. Ironically, this project itself
 is being built by multiple AI sessions — you are one of them.
 
 Repo: `hrishitkoli-ship-it/the-aisapp-project` (private)
-Stack: Node 18+ / Express / vanilla JS backend, frontend in progress
-(Session 1 + Session 3 lanes done; Session 2 still outstanding -- see below).
+Stack: Node 18+ / Express, Turso (libSQL) datastore, vanilla JS frontend.
+All 5 original lanes shipped; now mid-way through Vercel/Turso migration
+-- see "Current state" below for what's done and the one open blocker.
 No native deps (no SQLite, no Docker) — everything must run in Termux.
 
 ---
 
 ## Current state (as of this write-up)
 
+**⚠️ THIS SECTION WAS STALE FOR A WHILE — rewritten to match reality.**
+The version below this note previously said `db/store.js` was the
+original JSON-file datastore (✅ DONE) and that the Roster/Instructions
+frontend pages were still a gap (❌). Neither has been true for some
+time — this doc's top-of-file summary had fallen behind its own Session
+Ledger further down, which is a bad sign for anyone reading top-to-
+bottom expecting the first section to be authoritative. If you're
+reading this and something below looks wrong again, the Session Ledger
+(further down this file) and `SECURITY.md` are the more likely-to-be-
+current sources — cross-check before trusting a top-level summary like
+this one at face value.
+
 ```
 the-aisapp-project/
 ├── backend/
-│   ├── server.js            Entry point, route wiring        ✅ DONE
-│   ├── db/store.js          JSON-file datastore + locking     ✅ DONE
-│   ├── middleware/auth.js   Human vs AI identity              ✅ DONE
+│   ├── app.js                Express app definition (no .listen())  ✅ DONE
+│   ├── server.js             Thin local-dev wrapper, calls .listen() ✅ DONE
+│   ├── db/
+│   │   ├── store.js          Turso (libSQL) datastore               ✅ DONE (S2)
+│   │   │                     — device-identity functions MISSING,
+│   │   │                       see ⚠️ below
+│   │   └── schema.sql        Turso schema + size-cap triggers        ✅ DONE (S2)
+│   │                         — no device table, see ⚠️ below
+│   ├── middleware/
+│   │   ├── auth.js           Human vs AI identity                   ✅ DONE
+│   │   └── rateLimit.js      4-tier rate limiting                   ✅ DONE (S4)
 │   ├── routes/
-│   │   ├── activity.js      Read-only timeline                ✅ DONE
-│   │   ├── files.js         Tree/read/write/delete + conflict ✅ DONE
-│   │   ├── instructions.js  Notes/functionalities/assignments ✅ DONE
-│   │   ├── projects.js      Create/list/regen-token/delete    ✅ DONE
-│   │   └── sessions.js      AI Session Roster                 ✅ DONE
+│   │   ├── activity.js       Read-only timeline                     ✅ DONE
+│   │   ├── files.js          Tree/read/write/delete + conflict      ✅ DONE
+│   │   ├── instructions.js   Notes/functionalities/assignments      ✅ DONE
+│   │   ├── projects.js       Create/list/regen-token/delete         ✅ DONE
+│   │   ├── sessions.js       AI Session Roster                      ✅ DONE
+│   │   └── device.js         Device identity + cascade-delete       ❌ BROKEN
+│   │                         — calls 5 store.js functions that no
+│   │                           longer exist post-Turso-migration.
+│   │                           Deliberately NOT mounted in app.js.
+│   │                           See ⚠️ below and SECURITY.md §4a.
 │   └── utils/
-│       ├── fileOps.js       Path safety + versioning          ✅ DONE
-│       └── tokens.js        Token gen/hash/verify             ✅ DONE
-├── frontend/
-│   ├── index.html            App shell, PWA meta, script loads ✅ DONE (S1)
-│   ├── manifest.json          PWA manifest                     ✅ DONE (S1)
-│   ├── service-worker.js      Offline app-shell caching         ✅ DONE (S1)
-│   ├── css/
-│   │   ├── base.css           Shared tokens, light+dark, shell  ✅ DONE (S1)
-│   │   ├── projects.css       Project list/create/manage UI     ✅ DONE (S3)
-│   │   └── workspace.css      Tree/editor/diff view             ✅ DONE (S1)
-│   ├── js/
-│   │   ├── theme.js           Dark/light toggle                 ✅ DONE (S1)
-│   │   ├── router.js          Hash router + app-shell chrome     ✅ DONE (S1)
-│   │   ├── projects.js        ProjectManager (list/create/token) ✅ DONE (S3)
-│   │   └── pages/
-│   │       ├── workspace.js   Page 1: tree/editor/conflict UI   ✅ DONE (S1)
-│   │       ├── roster.js      Page 2: AI Session Roster          ❌ GAP (S2)
-│   │       └── instructions.js Page 3: Instructions/approval gate ❌ GAP (S2)
-│   └── icons/                 PWA icons (192/512)                ✅ DONE (S1)
-├── projects/                 Runtime data, gitignored
-├── package.json               express, cors, nanoid only
-└── README.md                  Full API reference — READ THIS FIRST
+│       ├── fileOps.js        Path safety + versioning                ✅ DONE
+│       └── tokens.js         Token gen/hash/verify                   ✅ DONE
+│                              — no permanent device-code prefix,
+│                                see ⚠️ below
+├── api/index.js               Vercel entry point (exports app.js)    ✅ DONE (S2)
+├── vercel.json                 Vercel routing config                 ✅ DONE (S2)
+├── frontend/                   All 5 lanes shipped — S1/S2/S3 pages,
+│                                roster.js, instructions.js, PWA
+│                                manifest/service-worker/icons all done
+├── projects/                   Runtime data, gitignored (JSON-era —
+│                                mostly vestigial now that Turso holds
+│                                real data; harmless to leave as-is)
+├── package.json                 Now includes @tursodatabase/serverless,
+│                                 express-rate-limit
+├── SECURITY.md                  Trust model, verified hardening, and
+│                                 open gaps — READ THIS
+└── README.md                    Original API reference — may be stale
+                                  on the storage layer specifically
+                                  post-Turso; SECURITY.md is more
+                                  current on that front
 ```
 
-**The backend and Session 1/3's frontend lanes are functionally complete
-and tested end-to-end against the real server (not mocked responses) --
-see git log for Session 1's verification notes.** The remaining gap is
-Session 2's two pages (Roster, Instructions), which the router already
-routes to with an honest "not built yet" placeholder rather than a crash,
-so the app is fully navigable and usable for Workspace + project management
-right now. Read `README.md` in the repo root before writing any code — it
-documents every route, the two-identity model, and conflict handling in
-detail.
+**⚠️ BLOCKING ITEM FOR SESSION 2 (or whoever owns `schema.sql`/`store.js`
+next): the device-identity feature is missing from the Turso schema
+entirely** — not partially migrated, genuinely absent. No device table,
+`tokens.js` reverted to producing tokens with no permanent-code prefix,
+`routes/device.js`'s five routes will throw immediately when called
+since they reference `store.getDevice`/`saveDevice`/`deleteDevice`/
+`projectDir`/`clearProjectIndex`, none of which exist on the current
+`store.js`. This looks like an earlier pre-device-identity version of
+these files got used as a base for part of the Turso rewrite, rather
+than a deliberate removal — nothing in the new schema or store explains
+a decision to drop it, unlike the rest of that migration (which is
+otherwise carefully documented, including an honest note about the live
+Turso connection being unverified from a sandboxed environment, and a
+real `ON DELETE CASCADE` reliability bug that was caught and correctly
+fixed). Full detail, including exactly what's missing, in `SECURITY.md`
+§4a. Session 4 deliberately did NOT reconstruct this unilaterally —
+it's schema-design territory Session 2 owns and has been careful about
+(the size-cap triggers), and doing it without their input on how it
+should fit alongside that design risks a worse outcome than flagging it
+clearly. `device.js` is left unmounted in `app.js` rather than wired up
+broken.
+
+**Everything else is functionally complete.** All five frontend lanes
+shipped and were tested end-to-end (see Session 5's ledger entry and
+`SESSION5_TEST_REPORT.md`). The backend runs on Turso instead of local
+JSON files (S2's migration, chosen over Supabase per the human's
+decision — see the Session 2 ledger entry for the full reasoning), is
+structured for Vercel deployment (`app.js`/`api/index.js` split, S2),
+and has 4-tier rate limiting (S4, restored once after an accidental
+loss during the Turso migration — see the Session 4 ledger entry).
+`README.md` was written for the original JSON-file architecture and may
+be stale specifically on storage-layer details now that Turso has
+landed — `SECURITY.md` is the more current source for anything
+security- or architecture-related; this doc's Session Ledger further
+down is the most current source for "what actually happened and when."
 
 ---
 
