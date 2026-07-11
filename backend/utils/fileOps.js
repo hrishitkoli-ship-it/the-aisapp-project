@@ -1,122 +1,153 @@
 /**
  * fileOps.js
  * ------------------------------------------------------------------
- * Low-level, identity-agnostic file operations for a project's
- * workspace folder. Two concerns are handled centrally here so every
- * caller (human routes, AI routes) gets them automatically:
+ * Turso-backed file operations for a project's workspace, replacing
+ * the original real-filesystem implementation (see store.js's header
+ * comment for why -- Vercel's serverless filesystem is read-only and
+ * ephemeral).
  *
- * 1. PATH SAFETY: every relative path from a request is resolved
- *    against the project's files/ directory and verified to still be
- *    inside it. This blocks "../../etc/passwd"-style traversal from
- *    a malicious or buggy AI agent.
+ * The original two concerns are preserved exactly, just backed by
+ * `aisapp_files` rows instead of real files on disk:
  *
- * 2. CONFLICT DETECTION: each file's last-known state is tracked in
- *    a sidecar ".versions.json" (per project, inside the project
- *    folder, NOT inside files/ so it never shows up in the user's own
- *    file tree). A write can optionally supply `expectedVersion`; if
- *    the file's current version doesn't match, we treat that as "this
- *    file changed underneath you" and return a conflict rather than
- *    silently overwriting -- this is what satisfies the "warning if
- *    an AI and the user are editing the same file simultaneously"
- *    requirement. Passing `force: true` bypasses the check once the
- *    caller has been warned and still wants to proceed.
+ * 1. PATH SAFETY: there's no real filesystem to resolve against
+ *    anymore, so "escaping the sandbox" is redefined as a purely
+ *    LOGICAL check on the path string itself: normalize it (collapse
+ *    "./" and "../" segments the same way a filesystem would), and
+ *    reject if the normalized result tries to climb above the
+ *    project's own namespace (starts with ".." or is an absolute
+ *    path). This preserves the identical security property -- an
+ *    agent cannot address any file outside its own project's rows --
+ *    without needing a real directory to contain it. Exactly like the
+ *    original, this THROWS on an escape attempt rather than silently
+ *    stripping "../" and continuing, so the route layer can log it as
+ *    a security_alert the human actually sees.
+ *
+ * 2. CONFLICT DETECTION: each row in aisapp_files carries its own
+ *    `version` integer directly. A write can supply `expectedVersion`;
+ *    a mismatch returns a conflict without writing, exactly like
+ *    before. `force: true` bypasses the check.
+ *
+ * Uses store.run() (parameterized SQL against the shared Turso
+ * client) rather than a query-builder API -- see store.js for the
+ * client setup and the same "network path unverified, schema/trigger
+ * logic proven locally" honesty note that applies here too.
  * ------------------------------------------------------------------
  */
 
-const fs = require('fs');
-const path = require('path');
+const store = require('../db/store');
 
 class PathSafetyError extends Error {}
 
 /**
- * Resolve relPath against baseDir, throwing PathSafetyError if it
- * would escape baseDir.
+ * Normalizes a logical relative path the same way a filesystem would
+ * (collapsing "a/../b" -> "b", "./a" -> "a") and throws PathSafetyError
+ * if the result would climb outside the project's namespace.
  *
- * IMPORTANT: this deliberately does NOT silently strip leading "../"
- * and continue -- an earlier version did that, which was technically
- * safe (the file access itself never escaped) but gave zero signal
- * that an escape was ATTEMPTED. Since this whole app exists to let
- * semi-trusted external AI agents touch the filesystem, a caller
- * trying to walk out of the sandbox is exactly the kind of thing the
- * human overseeing those agents should be able to see in the activity
- * timeline -- so we throw instead of quietly rewriting, and the route
- * layer logs the attempt (see routes/files.js).
+ * Deliberately mirrors the original safeResolve()'s "throw, don't
+ * silently rewrite" philosophy -- see file header.
  */
-function safeResolve(baseDir, relPath) {
-  const resolvedBase = path.resolve(baseDir);
-  const resolved = path.resolve(resolvedBase, relPath || '');
-  if (resolved !== resolvedBase && !resolved.startsWith(resolvedBase + path.sep)) {
-    throw new PathSafetyError(
-      `Path "${relPath}" resolves outside the project workspace and was blocked.`
-    );
+function safeNormalize(relPath) {
+  const raw = relPath || '';
+  if (raw.includes('\0')) {
+    throw new PathSafetyError('Path contains a null byte and was blocked.');
   }
-  return resolved;
+
+  // Split on both slash directions (a pasted Windows-style path
+  // shouldn't get a free pass just because it uses backslashes),
+  // filter out empty/"." segments, then walk segments collapsing
+  // ".." exactly like path.resolve() would.
+  const parts = raw.split(/[\\/]+/).filter((seg) => seg !== '' && seg !== '.');
+  const stack = [];
+  for (const seg of parts) {
+    if (seg === '..') {
+      if (stack.length === 0) {
+        throw new PathSafetyError(
+          `Path "${relPath}" resolves outside the project workspace and was blocked.`
+        );
+      }
+      stack.pop();
+    } else {
+      stack.push(seg);
+    }
+  }
+
+  const normalized = stack.join('/');
+  // A leading "/" in the ORIGINAL input (absolute-looking path) is
+  // also a red flag even though the split/filter above already
+  // stripped it structurally -- an agent writing "/etc/passwd"
+  // shouldn't quietly become "etc/passwd" inside the project.
+  if (raw.startsWith('/') || raw.startsWith('\\')) {
+    throw new PathSafetyError(`Path "${relPath}" is an absolute path and was blocked.`);
+  }
+
+  return normalized;
 }
 
-/** Recursively build a { name, type, path, children? } tree for the UI. */
-function buildFileTree(baseDir) {
-  if (!fs.existsSync(baseDir)) return [];
+/** Recursively-shaped { name, type, path, children? } tree for the UI,
+ *  built from a flat list of aisapp_files rows for this project. */
+async function buildFileTree(projectId) {
+  const result = await store.run(
+    'SELECT path, content, version, updated_at FROM aisapp_files WHERE project_id = ?',
+    [projectId]
+  );
 
-  function walk(dir, relPrefix) {
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
-    return entries
-      .filter((e) => e.name !== '.versions.json')
-      .map((entry) => {
-        const relPath = relPrefix ? `${relPrefix}/${entry.name}` : entry.name;
-        if (entry.isDirectory()) {
-          return {
-            name: entry.name,
-            type: 'directory',
-            path: relPath,
-            children: walk(path.join(dir, entry.name), relPath),
-          };
+  const root = { children: new Map() };
+
+  for (const row of result.rows) {
+    const segments = row.path.split('/');
+    let node = root;
+    segments.forEach((seg, i) => {
+      const isLeaf = i === segments.length - 1;
+      if (!node.children.has(seg)) {
+        node.children.set(
+          seg,
+          isLeaf
+            ? {
+                name: seg,
+                type: 'file',
+                path: segments.slice(0, i + 1).join('/'),
+                size: Buffer.byteLength(row.content, 'utf-8'),
+                modifiedAt: row.updated_at,
+                children: null,
+              }
+            : {
+                name: seg,
+                type: 'directory',
+                path: segments.slice(0, i + 1).join('/'),
+                children: new Map(),
+              }
+        );
+      }
+      node = node.children.get(seg);
+    });
+  }
+
+  function toArray(node) {
+    if (!node.children) return undefined;
+    return Array.from(node.children.values())
+      .map((child) => {
+        if (child.type === 'file') {
+          const { children, ...rest } = child;
+          return rest;
         }
-        const stat = fs.statSync(path.join(dir, entry.name));
-        return {
-          name: entry.name,
-          type: 'file',
-          path: relPath,
-          size: stat.size,
-          modifiedAt: stat.mtime.toISOString(),
-        };
+        return { ...child, children: toArray(child) };
       })
       .sort((a, b) => {
-        // Directories first, then alphabetical -- standard file-explorer feel.
         if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
         return a.name.localeCompare(b.name);
       });
   }
 
-  return walk(baseDir, '');
+  return toArray(root);
 }
 
-function readFileContent(baseDir, relPath) {
-  const target = safeResolve(baseDir, relPath);
-  if (!fs.existsSync(target) || fs.statSync(target).isDirectory()) return null;
-  return fs.readFileSync(target, 'utf-8');
-}
-
-// ---- Version tracking for conflict detection ----
-
-function versionsFilePath(baseDir) {
-  // baseDir is .../projects/<id>/files -- store the sidecar one level up
-  // so it lives at .../projects/<id>/.versions.json, invisible to the
-  // user's own file tree (which only walks files/).
-  return path.join(path.dirname(baseDir), '.versions.json');
-}
-
-function readVersions(baseDir) {
-  const p = versionsFilePath(baseDir);
-  if (!fs.existsSync(p)) return {};
-  try {
-    return JSON.parse(fs.readFileSync(p, 'utf-8'));
-  } catch {
-    return {};
-  }
-}
-
-function writeVersions(baseDir, versions) {
-  fs.writeFileSync(versionsFilePath(baseDir), JSON.stringify(versions, null, 2), 'utf-8');
+async function readFileContent(projectId, relPath) {
+  const normalized = safeNormalize(relPath);
+  const result = await store.run(
+    'SELECT content FROM aisapp_files WHERE project_id = ? AND path = ?',
+    [projectId, normalized]
+  );
+  return result.rows[0]?.content ?? null;
 }
 
 /**
@@ -125,66 +156,90 @@ function writeVersions(baseDir, versions) {
  * if expectedVersion was supplied and didn't match, WITHOUT writing.
  * Otherwise writes and returns { conflict: false, version }.
  */
-function writeFileContent(baseDir, relPath, content, { expectedVersion, force } = {}) {
-  const target = safeResolve(baseDir, relPath);
-  const versions = readVersions(baseDir);
-  const existing = versions[relPath];
+async function writeFileContent(projectId, relPath, content, { expectedVersion, force } = {}) {
+  const normalized = safeNormalize(relPath);
+
+  const existingResult = await store.run(
+    'SELECT version, last_modified_by, updated_at FROM aisapp_files WHERE project_id = ? AND path = ?',
+    [projectId, normalized]
+  );
+  const existing = existingResult.rows[0];
 
   if (!force && expectedVersion !== undefined && expectedVersion !== null) {
     if (existing && existing.version !== expectedVersion) {
       return {
         conflict: true,
         currentVersion: existing.version,
-        lastModifiedBy: existing.lastModifiedBy,
-        lastModifiedAt: existing.lastModifiedAt,
+        lastModifiedBy: existing.last_modified_by,
+        lastModifiedAt: existing.updated_at,
       };
     }
   }
 
-  const dir = path.dirname(target);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(target, content, 'utf-8');
-
   const newVersion = (existing?.version || 0) + 1;
-  versions[relPath] = {
-    version: newVersion,
-    lastModifiedAt: new Date().toISOString(),
-    lastModifiedBy: null, // filled in by the route layer via a second call if needed
-  };
-  writeVersions(baseDir, versions);
+
+  // SQLite/Turso upsert: INSERT ... ON CONFLICT(project_id, path) DO UPDATE.
+  await store.run(
+    `INSERT INTO aisapp_files (project_id, path, content, version, updated_at)
+     VALUES (?, ?, ?, ?, datetime('now'))
+     ON CONFLICT(project_id, path) DO UPDATE SET
+       content = excluded.content,
+       version = excluded.version,
+       updated_at = excluded.updated_at`,
+    [projectId, normalized, content, newVersion]
+  );
 
   return { conflict: false, version: newVersion };
 }
 
 /** Attach "who last wrote this" after the fact (called from the route,
  *  which knows the actor label at the point writeFileContent succeeds). */
-function stampLastModifiedBy(baseDir, relPath, actorLabel) {
-  const versions = readVersions(baseDir);
-  if (versions[relPath]) {
-    versions[relPath].lastModifiedBy = actorLabel;
-    writeVersions(baseDir, versions);
-  }
+async function stampLastModifiedBy(projectId, relPath, actorLabel) {
+  const normalized = safeNormalize(relPath);
+  await store.run(
+    'UPDATE aisapp_files SET last_modified_by = ? WHERE project_id = ? AND path = ?',
+    [actorLabel, projectId, normalized]
+  );
 }
 
-function deleteFileOrDir(baseDir, relPath) {
-  const target = safeResolve(baseDir, relPath);
-  if (!fs.existsSync(target)) return false;
-  fs.rmSync(target, { recursive: true, force: true });
+/** Deletes a single file OR every file whose path starts with
+ *  relPath + "/" (a "directory" in this flat-row model is just a
+ *  path prefix, so deleting one means deleting all rows under it). */
+async function deleteFileOrDir(projectId, relPath) {
+  const normalized = safeNormalize(relPath);
 
-  const versions = readVersions(baseDir);
-  delete versions[relPath];
-  writeVersions(baseDir, versions);
+  const existsResult = await store.run(
+    `SELECT 1 as found FROM aisapp_files WHERE project_id = ? AND (path = ? OR path LIKE ?) LIMIT 1`,
+    [projectId, normalized, `${normalized}/%`]
+  );
+  if (existsResult.rows.length === 0) return false;
+
+  await store.run(
+    `DELETE FROM aisapp_files WHERE project_id = ? AND (path = ? OR path LIKE ?)`,
+    [projectId, normalized, `${normalized}/%`]
+  );
+
   return true;
 }
 
 /** Returns the tracked version metadata for a file, or null if untracked. */
-function getFileVersion(baseDir, relPath) {
-  const versions = readVersions(baseDir);
-  return versions[relPath] || null;
+async function getFileVersion(projectId, relPath) {
+  const normalized = safeNormalize(relPath);
+  const result = await store.run(
+    'SELECT version, last_modified_by, updated_at FROM aisapp_files WHERE project_id = ? AND path = ?',
+    [projectId, normalized]
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    version: row.version,
+    lastModifiedBy: row.last_modified_by,
+    lastModifiedAt: row.updated_at,
+  };
 }
 
 module.exports = {
-  safeResolve,
+  safeNormalize,
   buildFileTree,
   readFileContent,
   writeFileContent,
