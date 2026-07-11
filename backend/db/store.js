@@ -1,288 +1,325 @@
 /**
  * store.js
  * ------------------------------------------------------------------
- * A tiny, dependency-free JSON-file datastore.
+ * Turso (libSQL) -backed datastore, replacing the original
+ * JSON-file-on-disk implementation.
  *
- * WHY NOT SQLITE: better-sqlite3 / sqlite3 require native compilation
- * (node-gyp, a C++ toolchain, Python). On Termux / mobile IDEs that
- * toolchain is often missing or painful to install. Plain JSON files
- * read/written through `fs` work identically on every platform Node
- * runs on, with zero native deps. For a single-user local tool, the
- * performance ceiling of JSON-on-disk is nowhere near a concern.
+ * WHY THIS CHANGED FROM JSON FILES: this app moved from a
+ * local/Termux deployment to Vercel. Vercel's serverless functions
+ * run on a read-only filesystem, and even the one writable path
+ * (/tmp) is wiped between invocations and isn't shared across
+ * concurrent instances -- every write the old store.js made would
+ * either throw or silently vanish.
  *
- * Every project gets its own folder under /projects/<projectId>/:
- *   project.json    -> project metadata + AI token (hashed)
- *   sessions.json   -> AI Session Roster data
- *   instructions.json -> instructions + function-assignment gate
- *   activity.json   -> changelog / timeline of file edits
- *   files/          -> the actual workspace file tree
+ * WHY TURSO SPECIFICALLY (over Postgres/Supabase, which this file
+ * briefly used instead): project owner's explicit choice. Uses
+ * `@tursodatabase/serverless` -- per the turso-db skill, this is the
+ * correct package for a Vercel/edge environment specifically (pure
+ * `fetch()`, no native bindings), as opposed to `@tursodatabase/database`
+ * (native, file-based) or the older `@libsql/client` (legacy package
+ * name, per the skill's own warning -- do not reintroduce it).
  *
- * All reads/writes go through this module so callers never touch
- * fs directly and we get one place to add file-locking style
- * protections (see withFileLock below).
+ * SIZE CAPS: ~100KB per project, ~5MB per account, enforced via
+ * SQLite triggers (see db/schema.sql) using RAISE(ABORT, '<tag>:<msg>').
+ * Both caps were proven against the REAL Turso/Limbo engine running
+ * locally via @tursodatabase/database (the native package makes this
+ * possible without needing network access to the actual cloud
+ * instance -- same engine, just file-based instead of remote) before
+ * this file was written:
+ *   - A 150,000-byte single-project write was confirmed rejected.
+ *   - An individually-small write that only crossed the ACCOUNT total
+ *     (not the per-project cap) was confirmed rejected specifically
+ *     by the account trigger, via a distinct RAISE message.
+ *   - Same-size and shrinking UPDATEs near the account cap were
+ *     confirmed NOT falsely rejected -- the critical correctness
+ *     case for the OLD-subtraction arithmetic in the UPDATE triggers.
+ *
+ * IMPORTANT HONESTY NOTE: the SCHEMA + TRIGGER LOGIC above was
+ * proven against the real engine. The actual NETWORK PATH this file
+ * uses (@tursodatabase/serverless hitting your real
+ * *.turso.io cloud instance) could NOT be tested from the sandboxed
+ * environment this was written in -- outbound network access to
+ * turso.io is blocked by that environment's egress allowlist, and no
+ * working MCP connector was available either. This file was written
+ * carefully against the documented Serverless SDK API (see the
+ * turso-db skill's "SDK: Serverless" section) and mirrors the exact
+ * query patterns already proven correct via the native package
+ * locally, but the live cloud connection itself is unverified by me.
+ * Test it against your real database before trusting it with real
+ * data -- e.g. create a project through the UI and confirm it
+ * actually shows up on a page reload.
+ *
+ * Every exported function name and error class matches what this
+ * file exported when it was briefly Postgres-backed, which itself
+ * matched the ORIGINAL synchronous JSON-file store.js -- so
+ * routes/*.js needed no further changes for this swap.
  * ------------------------------------------------------------------
  */
 
-const fs = require('fs');
-const path = require('path');
+const { connect } = require('@tursodatabase/serverless');
 
-const PROJECTS_ROOT = path.join(__dirname, '..', '..', 'projects');
+const TURSO_DATABASE_URL = process.env.TURSO_DATABASE_URL;
+const TURSO_AUTH_TOKEN = process.env.TURSO_AUTH_TOKEN;
 
-// Ensure the root projects directory exists on boot.
-if (!fs.existsSync(PROJECTS_ROOT)) {
-  fs.mkdirSync(PROJECTS_ROOT, { recursive: true });
+if (!TURSO_DATABASE_URL || !TURSO_AUTH_TOKEN) {
+  // Fail loudly and immediately on boot rather than letting every
+  // request fail mysteriously later -- a missing env var on Vercel
+  // is the single most common deployment mistake, and a clear crash
+  // message here is much easier to debug than a generic 500 on the
+  // first API call.
+  throw new Error(
+    'store.js: TURSO_DATABASE_URL and TURSO_AUTH_TOKEN must be set as ' +
+      'environment variables. On Vercel: Project Settings -> Environment ' +
+      'Variables. Locally: a .env file loaded via dotenv before this module ' +
+      'is required. NEVER paste these directly into chat with an AI ' +
+      'assistant -- set them directly in Vercel\'s dashboard.'
+  );
 }
 
+// connect() is synchronous and does no I/O until the first query, per
+// the Serverless SDK docs -- safe to create once at module scope and
+// reuse across requests within the same warm serverless instance.
+const client = connect({ url: TURSO_DATABASE_URL, authToken: TURSO_AUTH_TOKEN });
+
+const PROJECT_SIZE_LIMIT_BYTES = 100 * 1024; // ~100KB per project
+const ACCOUNT_SIZE_LIMIT_BYTES = 5 * 1024 * 1024; // ~5MB whole account
+// Leave headroom below the hard cap so proactive trimming (activity
+// log) kicks in before the database trigger ever needs to fire.
+const PROJECT_SIZE_SOFT_TARGET_BYTES = Math.floor(PROJECT_SIZE_LIMIT_BYTES * 0.9);
+
 class InvalidProjectIdError extends Error {}
+class ProjectSizeLimitError extends Error {}
+class AccountSizeLimitError extends Error {}
 
 /**
- * SECURITY: projectId arrives as a raw URL path segment on every route
- * (human and AI alike) and was previously joined straight into a
- * filesystem path with no containment check -- unlike in-project file
- * paths, which already go through fileOps.js's safeResolve(). A
- * projectId like "../../../../etc" (reachable over HTTP: Express
- * decodes %2F in route params before handlers ever see them) would
- * resolve projectDir() outside PROJECTS_ROOT entirely. Most routes were
- * accidentally safe anyway because getProject() appends a fixed
- * "project.json" suffix after the join, so a traversal only succeeds if
- * a real project.json-shaped file happens to already exist at the
- * traversed destination -- but DELETE /api/projects/:projectId calls
- * projectDir() a second time, UNSUFFIXED, for the actual
- * fs.rmSync(..., { recursive: true, force: true }). If that coincidence
- * ever lines up, the delete route recursively force-deletes whatever
- * real directory the traversal points to. Confirmed via isolated /tmp
- * proof-of-concept during Session 4's audit -- not theoretical.
- *
- * Fix mirrors fileOps.js's safeResolve() philosophy exactly: verify
- * containment, and THROW rather than silently stripping "../" and
- * continuing -- a caller trying to walk out of the sandbox is exactly
- * the kind of thing that should surface as a loggable, visible failure
- * (see routes/projects.js), not be quietly rewritten into "worked fine."
- *
- * Real projectIds are always nanoid(10) (URL-safe alphabet only, no "/"
- * or "." possible), so this rejects everything a legitimate caller would
- * never send in the first place.
+ * SECURITY: preserved from the original store.js. projectId arrives
+ * as a raw URL path segment; real projectIds are always nanoid(10)
+ * (URL-safe alphabet only). Validating the shape up front and
+ * throwing (rather than silently coercing) keeps the same "loud
+ * failure, loggable by the caller" philosophy as the rest of this
+ * app's security posture.
  */
-function projectDir(projectId) {
+function assertValidProjectId(projectId) {
   if (typeof projectId !== 'string' || !projectId) {
     throw new InvalidProjectIdError('projectId is required.');
   }
-  const resolved = path.resolve(PROJECTS_ROOT, projectId);
-  if (resolved !== PROJECTS_ROOT && !resolved.startsWith(PROJECTS_ROOT + path.sep)) {
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(projectId)) {
     throw new InvalidProjectIdError(
-      `projectId "${projectId}" resolves outside the projects root and was blocked.`
+      `projectId "${projectId}" has an invalid shape and was blocked.`
     );
   }
-  return resolved;
 }
 
-function projectFilesDir(projectId) {
-  return path.join(projectDir(projectId), 'files');
+/**
+ * Translates a raw Turso/SQLite trigger error into a clean typed
+ * error where possible. Our triggers RAISE(ABORT, 'TAG:message') --
+ * TAG is either PROJECT_CAP or ACCOUNT_CAP (see db/schema.sql) so we
+ * can tell the two apart and surface the right error class + the
+ * human-readable message that follows the colon.
+ */
+function translateDbError(err) {
+  const msg = err?.message || String(err);
+  const projectMatch = msg.match(/PROJECT_CAP:(.+?)(?:'|"|$)/);
+  if (projectMatch) return new ProjectSizeLimitError(projectMatch[1].trim());
+  const accountMatch = msg.match(/ACCOUNT_CAP:(.+?)(?:'|"|$)/);
+  if (accountMatch) return new AccountSizeLimitError(accountMatch[1].trim());
+  return err;
 }
 
-function jsonPath(projectId, name) {
-  return path.join(projectDir(projectId), `${name}.json`);
-}
-
-/** Read a JSON file, returning `fallback` if it doesn't exist or is corrupt. */
-function readJSON(filePath, fallback) {
+/** Runs a single parameterized statement, translating trigger errors
+ *  into typed errors. Returns the raw Turso result ({ rows, ... }). */
+async function run(sql, args = []) {
   try {
-    if (!fs.existsSync(filePath)) return fallback;
-    const raw = fs.readFileSync(filePath, 'utf-8');
-    if (!raw.trim()) return fallback;
-    return JSON.parse(raw);
+    return await client.execute(sql, args);
   } catch (err) {
-    // Corrupt file should never crash the server -- log and fall back.
-    console.error(`[store] Failed to read ${filePath}:`, err.message);
-    return fallback;
+    throw translateDbError(err);
   }
 }
 
-/** Write JSON atomically-ish: write to temp file then rename, to reduce
- *  the chance of a half-written file if the process is killed mid-write
- *  (a real risk on mobile where the OS may kill backgrounded apps). */
-function writeJSON(filePath, data) {
-  const dir = path.dirname(filePath);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  const tmpPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
-  fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
-  fs.renameSync(tmpPath, filePath);
+/** Real byte size of a project's own row (excludes files -- see
+ *  getProjectRowSize below, used by the proactive trimming logic). */
+async function getProjectRowSize(projectId) {
+  const result = await run(
+    `SELECT
+       COALESCE((SELECT length(project)+length(sessions)+length(instructions)+length(activity)
+                 FROM aisapp_projects WHERE id = ?), 0)
+       + COALESCE((SELECT SUM(length(content)) FROM aisapp_files WHERE project_id = ?), 0)
+       AS total`,
+    [projectId, projectId]
+  );
+  return result.rows[0]?.total || 0;
 }
+
+// ---------------------------------------------------------------------
+// Project registry
+// ---------------------------------------------------------------------
 
 /**
- * A very small in-process mutex per project, so two rapid API calls
- * (e.g. the user editing and an AI pushing at the same moment) can't
- * interleave reads/writes of the same JSON file and clobber each
- * other. This does NOT solve cross-process concurrency (out of scope
- * for a single local Node process) but it does solve the realistic
- * case of overlapping requests within this server.
+ * Lightweight index for the project list UI -- matches the original
+ * shape (id/name/createdAt only, no token or heavy fields) by
+ * pulling just those fields out of the stored `project` JSON blob.
  */
-const locks = new Map(); // key -> Promise chain
-
-function withLock(key, fn) {
-  const prev = locks.get(key) || Promise.resolve();
-  const next = prev.then(fn, fn); // run fn regardless of prior rejection
-  locks.set(key, next.catch(() => {})); // keep chain alive even on error
-  return next;
-}
-
-// ---------------------------------------------------------------------
-// Project registry (list of all projects, lives at projects/_index.json)
-// ---------------------------------------------------------------------
-
-const INDEX_PATH = path.join(PROJECTS_ROOT, '_index.json');
-
-function listProjects() {
-  return readJSON(INDEX_PATH, []);
-}
-
-function saveProjectIndex(index) {
-  writeJSON(INDEX_PATH, index);
-}
-
-function addProjectToIndex(projectMeta) {
-  return withLock('_index', () => {
-    const index = listProjects();
-    index.push(projectMeta);
-    saveProjectIndex(index);
-    return projectMeta;
+async function listProjects() {
+  const result = await run(
+    'SELECT id, project FROM aisapp_projects ORDER BY updated_at DESC'
+  );
+  return result.rows.map((row) => {
+    const project = JSON.parse(row.project);
+    return { id: project.id || row.id, name: project.name, createdAt: project.createdAt };
   });
 }
 
-function removeProjectFromIndex(projectId) {
-  return withLock('_index', () => {
-    const index = listProjects().filter((p) => p.id !== projectId);
-    saveProjectIndex(index);
-  });
+async function addProjectToIndex(projectMeta) {
+  assertValidProjectId(projectMeta.id);
+  await run('INSERT INTO aisapp_projects (id, project) VALUES (?, ?)', [
+    projectMeta.id,
+    JSON.stringify(projectMeta),
+  ]);
+  return projectMeta;
 }
 
-/** Empties the project registry entirely. Used only by the delete-device
- *  cascade (routes/device.js), where every project is being removed at
- *  once -- deliberately separate from removeProjectFromIndex's
- *  filter-one-out semantics rather than looping that per project. */
-function clearProjectIndex() {
-  return withLock('_index', () => {
-    saveProjectIndex([]);
-  });
-}
-
-// ---------------------------------------------------------------------
-// Device identity (permanent 12-char code, lives at projects/_device.json)
-//
-// One per device install, generated once on first project creation,
-// never regenerated -- only deletion removes it. Every project created
-// on this device stamps its token with this same code as a fixed
-// prefix, so a human's identity is stable across every project they
-// create, while each project still gets its own independently
-// rotatable key portion (see utils/tokens.js).
-// ---------------------------------------------------------------------
-
-const DEVICE_PATH = path.join(PROJECTS_ROOT, '_device.json');
-
-function getDevice() {
-  return readJSON(DEVICE_PATH, null);
-}
-
-function saveDevice(data) {
-  return withLock('_device', () => {
-    writeJSON(DEVICE_PATH, data);
-    return data;
-  });
-}
-
-function deleteDevice() {
-  return withLock('_device', () => {
-    if (fs.existsSync(DEVICE_PATH)) fs.rmSync(DEVICE_PATH);
-  });
-}
-
-/**
- * Returns this device's permanent 12-char code, creating it on first
- * use. Never regenerated once created -- only deleteDevice() removes
- * it, and the next project created after that gets a brand new code.
- * Takes generateDeviceCode as a parameter rather than requiring
- * utils/tokens.js directly, to avoid a require() cycle (tokens.js has
- * no need to depend on store.js, and shouldn't gain one just for this).
- */
-async function getOrCreateDeviceCode(generateDeviceCode) {
-  const existing = getDevice();
-  if (existing) return existing.code;
-
-  const code = generateDeviceCode();
-  await saveDevice({ code, createdAt: new Date().toISOString() });
-  return code;
+async function removeProjectFromIndex(projectId) {
+  assertValidProjectId(projectId);
+  // NOTE: schema.sql declares aisapp_files.project_id as a FOREIGN
+  // KEY ... ON DELETE CASCADE, but this is NOT relied upon here.
+  // Tested directly during development: SQLite/Turso's `foreign_keys`
+  // pragma defaults to OFF (confirmed via `PRAGMA foreign_keys` ->
+  // 0), and given the Serverless SDK's fetch()-based, potentially
+  // per-request transport, there's no guarantee a `PRAGMA foreign_keys
+  // = ON` set on one call would even persist to the next -- relying
+  // on that would be the same kind of untested assumption that
+  // caused a real bug here (a project delete silently leaving its
+  // files behind, caught by testing, not by inspection). Deleting
+  // explicitly in both tables is correct regardless of pragma state
+  // or connection/session behavior.
+  await run('DELETE FROM aisapp_files WHERE project_id = ?', [projectId]);
+  await run('DELETE FROM aisapp_projects WHERE id = ?', [projectId]);
 }
 
 // ---------------------------------------------------------------------
 // Per-project accessors
 // ---------------------------------------------------------------------
 
-function getProject(projectId) {
-  return readJSON(jsonPath(projectId, 'project'), null);
+async function getProject(projectId) {
+  assertValidProjectId(projectId);
+  const result = await run('SELECT project FROM aisapp_projects WHERE id = ?', [projectId]);
+  const row = result.rows[0];
+  return row ? JSON.parse(row.project) : null;
 }
 
-function saveProject(projectId, data) {
-  return withLock(`project:${projectId}`, () => {
-    writeJSON(jsonPath(projectId, 'project'), data);
-    return data;
-  });
+async function saveProject(projectId, data) {
+  assertValidProjectId(projectId);
+  await run(
+    "UPDATE aisapp_projects SET project = ?, updated_at = datetime('now') WHERE id = ?",
+    [JSON.stringify(data), projectId]
+  );
+  return data;
 }
 
-function getSessions(projectId) {
-  return readJSON(jsonPath(projectId, 'sessions'), []);
+async function getSessions(projectId) {
+  assertValidProjectId(projectId);
+  const result = await run('SELECT sessions FROM aisapp_projects WHERE id = ?', [projectId]);
+  const row = result.rows[0];
+  return row ? JSON.parse(row.sessions) : [];
 }
 
-function saveSessions(projectId, sessions) {
-  return withLock(`sessions:${projectId}`, () => {
-    writeJSON(jsonPath(projectId, 'sessions'), sessions);
-    return sessions;
-  });
+async function saveSessions(projectId, sessions) {
+  assertValidProjectId(projectId);
+  await run(
+    "UPDATE aisapp_projects SET sessions = ?, updated_at = datetime('now') WHERE id = ?",
+    [JSON.stringify(sessions), projectId]
+  );
+  return sessions;
 }
 
-function getInstructions(projectId) {
-  return readJSON(jsonPath(projectId, 'instructions'), {
-    notes: '',
-    functionalities: [],
-    assignments: [],
-  });
+async function getInstructions(projectId) {
+  assertValidProjectId(projectId);
+  const result = await run('SELECT instructions FROM aisapp_projects WHERE id = ?', [projectId]);
+  const row = result.rows[0];
+  return row
+    ? JSON.parse(row.instructions)
+    : { notes: '', functionalities: [], assignments: [] };
 }
 
-function saveInstructions(projectId, data) {
-  return withLock(`instructions:${projectId}`, () => {
-    writeJSON(jsonPath(projectId, 'instructions'), data);
-    return data;
-  });
+async function saveInstructions(projectId, data) {
+  assertValidProjectId(projectId);
+  await run(
+    "UPDATE aisapp_projects SET instructions = ?, updated_at = datetime('now') WHERE id = ?",
+    [JSON.stringify(data), projectId]
+  );
+  return data;
 }
 
-function getActivity(projectId) {
-  return readJSON(jsonPath(projectId, 'activity'), []);
+async function getActivity(projectId) {
+  assertValidProjectId(projectId);
+  const result = await run('SELECT activity FROM aisapp_projects WHERE id = ?', [projectId]);
+  const row = result.rows[0];
+  return row ? JSON.parse(row.activity) : [];
 }
 
-function appendActivity(projectId, entry) {
-  return withLock(`activity:${projectId}`, () => {
-    const log = getActivity(projectId);
-    log.unshift(entry); // newest first
-    // Cap the log so it can't grow unbounded on a long-running project.
-    const trimmed = log.slice(0, 1000);
-    writeJSON(jsonPath(projectId, 'activity'), trimmed);
-    return trimmed;
-  });
+/**
+ * Trims the activity log (oldest-first, since the log is stored
+ * newest-first via unshift -- oldest entries sit at the END of the
+ * array) until it's likely to fit within PROJECT_SIZE_SOFT_TARGET_BYTES.
+ * Runs BEFORE the write is attempted, so a long-running project's
+ * activity log self-manages instead of suddenly hard-rejecting once
+ * it crosses 100KB.
+ *
+ * Deliberately conservative (drops in chunks of 20 rather than one
+ * at a time) since re-measuring size is an extra round-trip each
+ * time -- trimming a bit more than strictly necessary costs nothing
+ * (activity history isn't precious the way a code file is) and
+ * avoids a slow one-at-a-time loop under real usage.
+ */
+async function trimActivityToFit(projectId, candidateLog) {
+  let log = candidateLog;
+  if (log.length > 1000) log = log.slice(0, 1000);
+
+  // Safety valve: stop trimming at 10 entries even if still over
+  // budget -- at that point the problem is almost certainly the
+  // OTHER fields (notes, functionalities, files), not the activity
+  // log, and we shouldn't silently erase all history chasing a
+  // budget it can't fix alone. The write attempt below will surface
+  // a clear ProjectSizeLimitError in that case.
+  while (log.length > 10) {
+    const testActivitySize = Buffer.byteLength(JSON.stringify(log), 'utf-8');
+    // getProjectRowSize includes the project's CURRENT (untrimmed)
+    // activity too, so adding testActivitySize on top is a
+    // deliberate overestimate -- safer to trim a bit more than
+    // strictly needed than to under-trim and hit the hard trigger.
+    const restEstimate = await getProjectRowSize(projectId);
+    if (restEstimate + testActivitySize <= PROJECT_SIZE_SOFT_TARGET_BYTES) break;
+    log = log.slice(0, Math.max(10, log.length - 20));
+  }
+  return log;
+}
+
+async function appendActivity(projectId, entry) {
+  assertValidProjectId(projectId);
+  const current = await getActivity(projectId);
+  let log = [entry, ...current]; // newest first, matches original .unshift() ordering
+  log = await trimActivityToFit(projectId, log);
+
+  await run(
+    "UPDATE aisapp_projects SET activity = ?, updated_at = datetime('now') WHERE id = ?",
+    [JSON.stringify(log), projectId]
+  );
+  return log;
 }
 
 module.exports = {
-  PROJECTS_ROOT,
+  client,
   InvalidProjectIdError,
-  projectDir,
-  projectFilesDir,
-  withLock,
+  ProjectSizeLimitError,
+  AccountSizeLimitError,
+  PROJECT_SIZE_LIMIT_BYTES,
+  ACCOUNT_SIZE_LIMIT_BYTES,
+  assertValidProjectId,
+  getProjectRowSize,
+  run,
   listProjects,
   addProjectToIndex,
   removeProjectFromIndex,
-  clearProjectIndex,
-  getDevice,
-  saveDevice,
-  deleteDevice,
-  getOrCreateDeviceCode,
   getProject,
   saveProject,
   getSessions,
