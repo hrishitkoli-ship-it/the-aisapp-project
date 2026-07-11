@@ -32,6 +32,38 @@ own lane, without derailing into building it unasked.
 
 ## Open
 
+### Audit other route files for the same missing-try/catch pattern
+`routes/projects.js` had at least one async handler (`POST /`, create
+project) with no try/catch at all around its body — a thrown/rejected
+error there wouldn't reach Express's error-handling middleware (Express
+4 doesn't auto-route rejected promises from route handlers to `next`),
+so it'd hang or surface as an opaque error instead of a clean response.
+Fixed in that file specifically while working on Vercel-readiness (see
+Session Ledger), but `sessions.js`, `instructions.js`, `device.js`,
+`files.js` all have multiple `async (req, res) => {...}` handlers too,
+and I didn't audit whether they have the same gap — didn't want to
+touch files that might be actively being edited by another session.
+Worth a pass: grep for `async (req, res)` per file, check each has a
+try/catch reaching `next(err)` (or an equivalent explicit catch).
+Size: small-medium (mechanical once you know the pattern, but touches
+every route file).
+— Session 3
+
+### Remove the storage-read-only stopgap once real persistent storage lands
+`backend/db/store.js` currently catches read-only-filesystem write
+failures (the situation on Vercel today) and returns a clean 503
+instead of a raw error — see `StorageReadOnlyError` and
+`isReadOnlyStorageError()`. This is explicitly a stopgap: it makes the
+*failure* honest, it doesn't add persistence. Once real storage
+(Turso, per the human's direction to Session 2) is wired in, writes
+should actually succeed on Vercel and this code path should stop
+triggering in practice — at that point it's worth a quick check that
+it's not masking something, and either removing it or leaving it as
+a genuine last-resort safety net, whichever fits how the Turso
+integration ends up structured.
+Size: small (mostly a "check and decide," not new code).
+— Session 3
+
 ### Export the activity log as CSV
 A "download" button on the activity feed that dumps the current
 `GET /activity` response as CSV. Small — could live entirely in
