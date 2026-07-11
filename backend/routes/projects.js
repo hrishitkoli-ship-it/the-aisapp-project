@@ -14,6 +14,7 @@ const fs = require('fs');
 const { nanoid } = require('nanoid');
 const store = require('../db/store');
 const { generateToken, generateDeviceCode, hashToken } = require('../utils/tokens');
+const { humanSensitiveLimiter } = require('../middleware/rateLimit');
 
 const router = express.Router();
 
@@ -48,7 +49,7 @@ function logBlockedProjectIdAttempt(req, action, err) {
 
 // POST /api/projects  { name, description }
 // Creates a new project folder + metadata + a fresh AI token.
-router.post('/', async (req, res) => {
+router.post('/', humanSensitiveLimiter, async (req, res) => {
   const { name, description } = req.body || {};
 
   if (!name || typeof name !== 'string' || !name.trim()) {
@@ -119,7 +120,7 @@ router.get('/:projectId', (req, res) => {
 // portion rotates. (Projects created before the device-code split have
 // no deviceCode field; this backfills it from the device identity
 // rather than erroring, so pre-existing projects keep working.)
-router.post('/:projectId/regenerate-token', async (req, res) => {
+router.post('/:projectId/regenerate-token', humanSensitiveLimiter, async (req, res) => {
   const { projectId } = req.params;
   let project;
   try {
@@ -154,7 +155,7 @@ router.post('/:projectId/regenerate-token', async (req, res) => {
 });
 
 // DELETE /api/projects/:projectId - remove a project entirely.
-router.delete('/:projectId', async (req, res) => {
+router.delete('/:projectId', humanSensitiveLimiter, async (req, res) => {
   const { projectId } = req.params;
   let project;
   try {

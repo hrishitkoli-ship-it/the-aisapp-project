@@ -13,6 +13,7 @@ const express = require('express');
 const fs = require('fs');
 const store = require('../db/store');
 const { generateDeviceCode } = require('../utils/tokens');
+const { humanSensitiveLimiter } = require('../middleware/rateLimit');
 
 const router = express.Router();
 
@@ -54,7 +55,7 @@ router.get('/', (req, res, next) => {
 // retrofitting all of them is outside Session 4's audit-not-rebuild
 // scope for this pass -- flagged as a finding, not silently expanded
 // into.
-router.delete('/', async (req, res, next) => {
+router.delete('/', humanSensitiveLimiter, async (req, res, next) => {
   try {
     const { confirm } = req.body || {};
     if (confirm !== true) {

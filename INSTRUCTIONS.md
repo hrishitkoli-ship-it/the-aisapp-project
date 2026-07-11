@@ -214,6 +214,106 @@ and fixed the `projectDir()` traversal gap on the DELETE route (see
 `db/store.js` header comment — confirmed via isolated PoC, not
 theoretical). Confirmed token comparison is constant-time throughout.
 
+**Follow-up (same session, human-requested — rescoped from a one-time
+audit to ongoing security & safety work):**
+
+- **Permanent device identity.** 12-char alphanumeric code, generated
+  once per device (`db/store.js`'s `getDevice`/`saveDevice`/
+  `getOrCreateDeviceCode`), embedded as a fixed prefix in every
+  project's token (`aihub_<12-char code><rotatable key>` —
+  `utils/tokens.js`). Same code across every project a human creates on
+  one device; only the key portion rotates on regenerate. Never
+  regenerates itself — only explicit, confirmed deletion
+  (`DELETE /api/device`, requires `{ "confirm": true }`) removes it,
+  which cascades to deleting every project under it (their tokens embed
+  a code that no longer exists anywhere regardless). New file:
+  `routes/device.js`. Verified end-to-end against the real server,
+  including a live-caught crash bug (see commit history): the delete
+  route originally called a non-existent `store` function, AND had no
+  try/catch around its async body — Express 4 doesn't auto-catch
+  rejected promises from async handlers the way Express 5 does, so that
+  typo took the entire server process down, not just that request.
+  Fixed in this file; flagged as a likely-present gap in other async
+  route handlers across the codebase, not retrofitted everywhere (out
+  of scope for this pass).
+- **`SKILL.md`** (repo root) — agent-facing guide for authenticating,
+  registering in the roster, safe file writes, cross-session requests,
+  and the approval-gate boundary. Grounded in the actual route
+  inventory (read every route file, not written from memory) and
+  validated live — every documented request shape was actually sent
+  against the real server. Caught and fixed one real inaccuracy in the
+  process: the draft said to source a file's `version` from a *read*
+  response; testing showed `GET /files/content/<path>` never returns
+  one at all — only a *write* response does. Not yet wired to a
+  "downloadable from site settings" UI, since no settings page exists
+  anywhere in the frontend yet (checked before writing) — that's open
+  frontend work for whichever session builds it.
+- **Rate limiting**, once the human confirmed this app is moving toward
+  a public Vercel deployment (see `SECURITY.md` §3 for the fuller
+  threat-model shift this implies — the short version: `0.0.0.0`
+  binding was always intentional for LAN reachability, and is now also
+  the exact mechanism by which "public" becomes possible). New file
+  `middleware/rateLimit.js`, four tiers (global backstop, IP-keyed
+  pre-auth surface limiter, project-keyed post-auth work limiter,
+  IP-keyed limiter on specific destructive human routes only) — full
+  reasoning in that file's header. Verified live, every tier, by
+  actually tripping each one against the real running server, not just
+  configured and trusted. Found and fixed a real design bug in the
+  process: the pre-auth and post-auth AI limiters stack (same request
+  path, in sequence) rather than being alternatives, so the lower of
+  the two silently wins — the surface limiter's original 100/min value
+  was capping ALL legitimate AI traffic well under the work limiter's
+  intended 300/min allowance for the realistic common case (one agent,
+  one project, one IP). Caught via live testing (150 requests, one
+  valid token, expected all to succeed — only 100 did), not by
+  inspection; fixed by raising the surface limiter well above the work
+  limiter's ceiling. Two near-miss regressions also happened and were
+  caught during this same pass, worth naming plainly rather than
+  glossing over: two `str_replace` edits (adding the work limiter into
+  `sessions.js` and `files.js`) accidentally matched non-unique
+  surrounding text and silently deleted the `GET /` session-list route
+  and the `GET /tree` file-listing route respectively. Both caught by
+  diffing every touched file against the last commit before trusting a
+  clean syntax check, both restored and re-verified live before
+  pushing.
+- **`SECURITY.md`** (repo root) — the deliverable from this lane's
+  *original* scope (see the top of the Non-negotiable rules — "so
+  future sessions don't 'fix' it into a cloud auth system by mistake")
+  that was never actually written before now. Documents the trust
+  model as it originally was, what's verified about it this session,
+  and — importantly — the real, NOT-yet-closed gap that going public
+  opens up: every human-facing route (`/api/projects/...`,
+  `/api/device`) has zero authentication, by original design, for a
+  LAN-only tool. Rate limiting slows down abuse of that gap; it does
+  not close it. Real authentication on human routes is flagged
+  explicitly as an open, undecided, bigger architectural question — not
+  something this pass took on, and not something to assume is handled
+  just because other hardening landed around it.
+- **Turso migration: reference-only groundwork, NOT this lane's
+  deliverable.** Before the human confirmed Session 2 owns the actual
+  Turso migration, this session built `db/schema.sql` (relational
+  schema derived from the current JSON shapes, loaded and exercised
+  against a real SQLite engine — composite keys, cascade deletes, and
+  unique constraints all confirmed correct) and `db/store.turso.js` (a
+  same-signature replacement for `store.js`, using
+  `@tursodatabase/serverless` specifically because `@libsql/client`
+  pulls in native binaries that conflict with this repo's own "no
+  native deps" rule — confirmed via `find node_modules -name "*.node"`
+  before and after switching packages). **Neither file's Turso
+  connection has been live-verified** — this sandbox has no network
+  egress to `*.turso.io` (confirmed: "Host not in allowlist," a sandbox
+  limitation, not a credentials problem). Left in the repo as a
+  starting reference for Session 2, not a finished handoff — Session 2
+  should verify the real connection independently and is free to
+  diverge from this shape. Full detail in `SECURITY.md` §3c.
+- Read the last 5 commits and this document fresh before starting this
+  follow-up work, per the human's explicit ask, rather than assuming
+  prior context still held — found the frontend had moved from "total
+  gap" to "all five lanes shipped" since this session's own first read,
+  and found real Vercel-deployment-prep commits (root entrypoint shim,
+  build script) that had landed concurrently and needed merging before
+  continuing.
+
 ### Session 5 — Testing, docs, and integration
 **Status: shipped.** Full route smoke test (`SESSION5_TEST_REPORT.md`),
 conflict-detection end-to-end verification, confirmed the AI→approve
