@@ -337,6 +337,44 @@ Still open from Session 2's original scope: none. Lane complete.
   found — backend genuinely is in the state Sessions 4 and 5
   reported.
 
+**Follow-up (same session, human-requested): fixed broken project
+creation.**
+**Status: shipped.** `POST /api/projects` was throwing a 500 on every
+call — `generateDeviceCode` was referenced throughout `store.js`/
+`routes/projects.js`/`routes/device.js` as part of the device-identity
+feature but was never actually implemented in `utils/tokens.js`, and
+`generateToken()` ignored the `deviceCode` argument being passed to
+it. Found by actually running `POST /api/projects`, not by reading
+code — worth noting since the ledger had several "verified against a
+live server" entries above this one, and this bug still slipped
+through, because verification happened before this particular feature
+landed on top.
+
+Added `generateDeviceCode()` and made `generateToken(deviceCode)`
+actually embed it (`aihub_<12-char code>_<random>`, falls back to the
+original shape if no deviceCode is passed, so nothing breaks for a
+call site that doesn't have one). Verified live: project creation
+works, a second project on the same device gets the *same* deviceCode
+(confirmed stable, not just present), regenerate-token uses the same
+path correctly, new-format tokens still authenticate fine against
+`verifyToken`.
+
+**Found but deliberately NOT touched — flagging for Session 2, who's
+already working this as of this entry:** `fileOps.js` has been fully
+rewritten to store file *content* in Turso (`store.run()` against an
+`aisapp_files` table) — but the currently-active `store.js` is still
+the fs-JSON version with no `run()` method, so every file
+read/write/delete is broken right now (`GET
+/api/ai/:id/files/tree` → `store.run is not a function`, confirmed
+live, not assumed). This also directly contradicts `store.turso.js`'s
+own header comment, which says file-content storage was deliberately
+left **out of scope** of that migration ("a separate, undecided
+question"). Two parts of the codebase currently disagree about where
+file content lives, and neither is fully working as a result. Not a
+one-right-answer bugfix like the device-code one above — a real
+architectural call, so leaving it for whoever's already mid-decision
+rather than picking a side unasked.
+
 ### Session 1 — Frontend Core (Workspace + file tree UI)
 **Status: shipped.** `frontend/index.html` (real app shell, replacing
 Session 3's unblock-only placeholder), `frontend/js/router.js`,
