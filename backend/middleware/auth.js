@@ -19,6 +19,13 @@
  * requireAIToken also attaches `req.session` info (which AI session
  * this token maps to, if the caller identified one) so route handlers
  * can log "who did this" in the activity timeline.
+ *
+ * CHANGED: store.getProject() is now async (Postgres-backed -- see
+ * db/store.js), so both middleware functions below are now async
+ * too, and safeGetProject is awaited at both call sites. This file
+ * is the single busiest chokepoint in the app (every route passes
+ * through one of these two functions), so getting the await right
+ * here specifically was the highest-value place to double check.
  * ------------------------------------------------------------------
  */
 
@@ -34,16 +41,13 @@ function extractBearer(req) {
 
 /**
  * SECURITY: store.getProject() can throw store.InvalidProjectIdError for
- * a projectId that would resolve outside the projects root (see
- * db/store.js). Both middleware functions below are the one chokepoint
- * every route in the app passes through, so this is the highest-value
- * place to catch it -- confirmed via Session 4's audit that this was
- * previously an unhandled throw (500 + stack trace) for any malformed
- * projectId hitting ANY route, not just the ones audited directly.
+ * a malformed projectId (see db/store.js's assertValidProjectId). Both
+ * middleware functions below are the one chokepoint every route in the
+ * app passes through, so this is the highest-value place to catch it.
  */
-function safeGetProject(req, res, projectId) {
+async function safeGetProject(req, res, projectId) {
   try {
-    return { project: store.getProject(projectId) };
+    return { project: await store.getProject(projectId) };
   } catch (err) {
     if (err instanceof store.InvalidProjectIdError) {
       console.warn(
@@ -62,34 +66,38 @@ function safeGetProject(req, res, projectId) {
  * On success, sets req.isAI = true and req.tokenValid = true.
  * On failure, responds 401/403 and does not call next().
  */
-function requireAIToken(req, res, next) {
-  const { projectId } = req.params;
-  const { project, handled } = safeGetProject(req, res, projectId);
-  if (handled) return; // response already sent by safeGetProject
+async function requireAIToken(req, res, next) {
+  try {
+    const { projectId } = req.params;
+    const { project, handled } = await safeGetProject(req, res, projectId);
+    if (handled) return; // response already sent by safeGetProject
 
-  if (!project) {
-    return res.status(404).json({ error: 'Project not found.' });
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found.' });
+    }
+
+    const token = extractBearer(req);
+    if (!token) {
+      return res.status(401).json({
+        error: 'Missing AI token. Provide "Authorization: Bearer <token>".',
+      });
+    }
+
+    if (!verifyToken(token, project.tokenHash)) {
+      return res.status(403).json({ error: 'Invalid or revoked AI token.' });
+    }
+
+    req.isAI = true;
+    req.project = project;
+
+    // Optional: the caller may self-identify as a specific session via
+    // this header, so activity/roster writes can be attributed to them.
+    req.callerSessionId = req.headers['x-session-id'] || null;
+
+    next();
+  } catch (err) {
+    next(err);
   }
-
-  const token = extractBearer(req);
-  if (!token) {
-    return res.status(401).json({
-      error: 'Missing AI token. Provide "Authorization: Bearer <token>".',
-    });
-  }
-
-  if (!verifyToken(token, project.tokenHash)) {
-    return res.status(403).json({ error: 'Invalid or revoked AI token.' });
-  }
-
-  req.isAI = true;
-  req.project = project;
-
-  // Optional: the caller may self-identify as a specific session via
-  // this header, so activity/roster writes can be attributed to them.
-  req.callerSessionId = req.headers['x-session-id'] || null;
-
-  next();
 }
 
 /**
@@ -97,17 +105,21 @@ function requireAIToken(req, res, next) {
  * 404s if it doesn't exist. No token required -- this is the local,
  * no-cloud-login path for the person using the app on their own device.
  */
-function loadProjectForHuman(req, res, next) {
-  const { projectId } = req.params;
-  const { project, handled } = safeGetProject(req, res, projectId);
-  if (handled) return; // response already sent by safeGetProject
+async function loadProjectForHuman(req, res, next) {
+  try {
+    const { projectId } = req.params;
+    const { project, handled } = await safeGetProject(req, res, projectId);
+    if (handled) return; // response already sent by safeGetProject
 
-  if (!project) {
-    return res.status(404).json({ error: 'Project not found.' });
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found.' });
+    }
+    req.project = project;
+    req.isAI = false;
+    next();
+  } catch (err) {
+    next(err);
   }
-  req.project = project;
-  req.isAI = false;
-  next();
 }
 
 module.exports = { requireAIToken, loadProjectForHuman, extractBearer };
