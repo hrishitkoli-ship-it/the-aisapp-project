@@ -69,7 +69,7 @@ the-aisapp-project/
 │   │   ├── device.js         Device identity (12-char code), DELETE      ✅ DONE
 │   │   ├── files.js          Tree/read/write/delete + conflict           ⚠️ BROKEN, see KFS #4
 │   │   ├── instructions.js   Notes/functionalities/assignments           ✅ DONE
-│   │   ├── projects.js       Create/list/regen-token/delete              ✅ DONE
+│   │   ├── projects.js       Create/list/regen-token/delete              ⚠️ SEE KFS #4, #7
 │   │   └── sessions.js       AI Session Roster                           ✅ DONE
 │   └── utils/
 │       ├── fileOps.js        Path safety + versioning (rewritten for     ⚠️ SEE KFS #4
@@ -105,15 +105,18 @@ the-aisapp-project/
 ```
 
 **All three frontend pages and the whole backend route surface are built.**
-The two live, unresolved gaps are: (1) file content storage, currently
-broken — see Known Failure Signature #4 — and (2) real authentication on
-human-facing routes, an explicitly open architectural question per
-`SECURITY.md` (not a bug, a decision not yet made — see that file before
-assuming it's handled just because rate limiting landed near it). Read
-`README.md` before writing any code — it documents every route, the
-two-identity model, and conflict handling in detail. Read `SECURITY.md`
-before touching anything auth-related — it documents the trust model and
-exactly what is and isn't decided yet.
+The two live, unresolved gaps are: (1) storage — currently broken more
+widely than "file content" alone: **project creation itself doesn't
+fully work** (a created project's `project.json` never gets written,
+so it 404s on every subsequent read) as well as file content — see
+Known Failure Signature #4 for the full, now-widened scope — and (2)
+real authentication on human-facing routes, an explicitly open
+architectural question per `SECURITY.md` (not a bug, a decision not yet
+made — see that file before assuming it's handled just because rate
+limiting landed near it). Read `README.md` before writing any code — it
+documents every route, the two-identity model, and conflict handling in
+detail. Read `SECURITY.md` before touching anything auth-related — it
+documents the trust model and exactly what is and isn't decided yet.
 
 ---
 
@@ -262,8 +265,10 @@ the same thing a third time.
 | 1 | A route handler that calls an async `store.*` function without `await`, then responds immediately | `store.js` writes go through a lock queue that resolves on a microtask; the HTTP response can fire before the write actually lands | Every `store.*` call in a route handler must be `await`ed, and the handler must be `async` | Session 1 (project creation, pre-Turso) |
 | 2 | `req.params.projectId` (or any route param) used directly in a filesystem/DB path with no validation | Only file *paths within* a project were going through `safeResolve()` — the project identifier itself wasn't | Validate the identifier itself before using it to build any path; throw a typed error, don't silently sanitize-and-continue (silent rewriting gives zero signal that an escape was attempted) | Session 4 (`projectDir()` traversal via DELETE) |
 | 3 | An `async` Express route handler throws/rejects with no `try/catch`, and Express 4 doesn't route that to error middleware automatically | Missing `try/catch` + `next(err)` around `await` calls in a route handler | Every async handler needs its own `try/catch`, or a wrapper that catches and forwards to `next()`. Found independently **twice** — audit any new async route handler for this specifically | Session 4 (device DELETE crash), Session 3 (`routes/projects.js` create/regenerate/delete) |
-| 4 | **[CURRENTLY OPEN]** File *content* storage is implemented twice, disagreeing: `fileOps.js` was rewritten to call `store.run()` against Turso, but the live `store.js` is still the fs-JSON version with no `run()` method | Two sessions' work landed on top of each other mid-decision, before either fully replaced the other | Not a pick-a-line-and-fix-it bug — a real architectural call (Turso table vs. some other approach) that Session 2 is mid-deciding. Don't touch `files.js`/`fileOps.js` without reading Session 3's flag in the Session Ledger first | Session 3, verified live (`store.run is not a function`) |
+| 4 | **[CURRENTLY OPEN, SCOPE WIDER THAN FIRST DOCUMENTED]** File *content* storage is implemented twice, disagreeing: `fileOps.js` was rewritten to call `store.run()` against Turso, but the live `store.js` is still the fs-JSON version with no `run()` method. **Session 4 found this same root cause (route code written against a schema that isn't the live one) is not confined to `files.js`/`fileOps.js`** — `routes/projects.js`'s own header comment describes an `aisapp_projects` Turso table with automatic `ON DELETE CASCADE` and schema-default columns that do not exist in the live JSON-file `store.js`. This is why `POST /api/projects` currently creates an index entry but never writes a real `project.json` — confirmed live, not inferred (a created project immediately 404s on every subsequent read). See row 6 below for a related, now-fixed symptom of this same mismatch | Two (or more) sessions' work landed on top of each other mid-decision, before either fully replaced the other, and the affected surface is broader than first realized | Not a pick-a-line-and-fix-it bug — a real architectural call (Turso table vs. some other approach) that Session 2 is mid-deciding. Don't touch `files.js`/`fileOps.js`/`routes/projects.js` without reading Session 3's flag in the Session Ledger first. **If you find a THIRD file exhibiting this pattern, that's the point this needs to stop being "wait for Session 2" and become an all-hands architectural decision** — see Rule 6/Maintaining This File on updating this row rather than creating a fourth near-duplicate one | Session 3, verified live (`store.run is not a function`). Scope widened by Session 4, verified live (`project.json` never written, every created project immediately unreachable) |
 | 5 | A storage write fails because the filesystem is read-only (e.g. a serverless environment), and the raw `fs` error surfaces as an opaque 500 | Vercel's deployed bundle is read-only outside `/tmp`; no distinction was made between "bug" and "expected environment limitation" | Catch the specific read-only error codes (`EROFS`/`EACCES`/`ENOENT`/`EPERM` — confirmed via a real read-only mount test, not assumed; deliberately excludes `ENOSPC` so a real full-disk problem doesn't get mislabeled) and throw a typed error the central handler turns into a clean `503` | Session 3 |
+| 6 | Two files that are supposed to share one definition (`app.js` as the shared Express app; `server.js`/`api/index.js` as its two consumers) silently diverge because one of them was never actually rewritten to depend on the other — it just independently rebuilt an equivalent-looking copy instead | `server.js` predates the `app.js` split and was never actually converted to import it, despite `app.js`'s own header comment claiming it was. No test exercised `server.js` specifically after `app.js` started gaining new middleware (helmet/CSP, rate limiting), so the drift wasn't visible until something added to `app.js` was checked against the real entry point and found completely absent | When a refactor claims "two consumers share one definition," grep for the actual `require()`/`import` proving that, don't trust the comment. If a fix only seems to take effect through one of two supposedly-equivalent entry points, suspect this pattern immediately | Session 4 — found while verifying CSP headers actually reached `node backend/server.js`, the real local/Termux entry point, not just `app.js` loaded in isolation |
+| 7 | A route's own comment says "no secrets included" / matches clearly-intended behavior, but the actual response leaks a secret field anyway, because the route was written against a different store.js/schema shape than the one actually live (same root cause family as row 4, different concrete symptom) | `GET /api/projects` returned every project's `tokenHash` in the clear to any unauthenticated caller — the route's own `stripSecret()` helper exists and is correctly used by three OTHER routes in the same file, just not this one, because `store.listProjects()` on the live store.js returns a different (fuller) shape than whatever this route was written expecting | Don't trust a route's own comment describing its output shape — check what the live `store.*` function actually returns and confirm the response is filtered through the same secret-stripping helper every sibling route in the file already uses. Fixed by routing the response through the existing `stripSecret()` (`.map(stripSecret)`) rather than inventing a new filtering approach | Session 4 — found live, not by code review, while testing an unrelated fix (`app.js`/`server.js` reconciliation) end-to-end |
 
 ---
 
@@ -355,6 +360,67 @@ same session.** `SECURITY.md` is explicit that rate limiting slows abuse
 of the human-route auth gap, it does not close it — real authentication
 there is flagged as an open, undecided architectural question, not solved
 by anything in this pass.
+
+**Follow-up (same session, human-requested): additional hardening +
+public-deployment prep.** Started rebuilding a device-secret write-gate
+for human-facing routes (matching `SECURITY.md`'s flagged open gap) —
+**abandoned mid-build** once `git pull` surfaced Session 3's real device-
+identity rebuild landing concurrently; the in-progress work was
+architecturally superseded before completion and was not carried forward
+(old stashes from this abandoned attempt were cleaned up rather than left
+to confuse a future session).
+
+Added `helmet` with a carefully-configured CSP to `app.js` — baseline
+security headers plus a `script-src` policy locked to `'self'` and one
+specific sha256 hash for `index.html`'s one inline script. New
+`scripts/compute-csp-hash.js` computes that hash from the real file's
+exact byte content, added specifically because a hand-retyped first
+attempt at the same hash, during this same pass, produced a silently
+wrong value — caught by double-checking, not by inspection.
+
+**Bigger finding while verifying the CSP actually worked**: booted via
+the real entry point (`node backend/server.js`) and found the header
+completely absent. Root cause: `server.js` never actually imported
+`app.js` at all, despite `app.js`'s own header comment claiming it does —
+it built its own fully independent, duplicate Express app from scratch.
+The two had silently diverged in both directions (`server.js` had
+`device.js` mounted and `app.js` didn't; `app.js`'s error handler
+referenced two `store.js` error classes that don't currently exist;
+`server.js` had the service-worker no-cache header and the explicit
+`/api/*` 404 handler, `app.js` had neither; body-size limits differed for
+no stated reason). Every difference was reconciled INTO `app.js` first,
+each verified live in isolation, before rewriting `server.js` as the thin
+wrapper it always claimed to be (111 lines of duplicated app definition
+→ 65 lines of actual wrapper). Re-verified the full flow end-to-end
+through the real entry point afterward, not just `app.js` in isolation.
+Added as Known Failure Signature #6 — this class of drift (two files
+that are supposed to share a definition, where one was never actually
+converted to depend on the other) seemed generically worth watching for
+elsewhere, not just noting as a one-off.
+
+**While running that end-to-end verification, found a live secret leak
+unrelated to what was being tested**: `GET /api/projects` — fully
+unauthenticated — was returning every project's `tokenHash` in the clear.
+Same root cause family as Known Failure Signature #4 (route code written
+against a different store.js shape than the live one — confirmed
+`routes/projects.js`'s own header comment describes a Turso
+`aisapp_projects` table that doesn't exist yet), but unlike that broader
+architectural question, this specific fix was safe and appropriate to
+make immediately: `stripSecret()` already exists in the same file and is
+already used correctly by three sibling routes — this one just missed
+it. Fixed by routing the response through the same existing helper,
+verified live (before: real hash in a real response; after: field
+absent, every other field intact). Added as Known Failure Signature #7.
+Deliberately did NOT touch the deeper issue that caused it (the on-disk
+`_index.json` still contains `tokenHash` — that's Known Failure
+Signature #4's territory, Session 2's call).
+
+Also widened Known Failure Signature #4's documented scope: the same
+route/schema mismatch that breaks file storage also means
+`POST /api/projects` currently never writes a real `project.json` at
+all — confirmed live (a project is created, then immediately 404s on
+every subsequent read). Not a new bug, the same one, just found to be
+wider than the existing table row described.
 
 ### Session 2 — Session Roster + Instructions pages
 **Status: shipped.** `frontend/js/roster.js`, `frontend/js/instructions.js`,
