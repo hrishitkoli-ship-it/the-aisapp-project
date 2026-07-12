@@ -1,91 +1,46 @@
 /**
  * server.js
  * ------------------------------------------------------------------
- * Entry point. Wires up:
- *   - JSON body parsing + CORS (so an external AI process running
- *     anywhere on the same device/network can call the API)
- *   - Human-facing routes under /api/projects/...
- *   - AI-facing (token-gated) routes under /api/ai/...
- *   - Static frontend serving (the PWA itself)
+ * Thin local-dev / Termux entry point. Calls app.listen() on the
+ * SHARED app definition in app.js -- does not define its own routes,
+ * middleware, or error handling.
+ *
+ * REWRITTEN during this session's Rule-6 re-verification pass: this
+ * file previously built its OWN complete, independent Express app
+ * from scratch (its own route mounts, its own CORS/JSON setup, its
+ * own static-file serving, its own error handler) -- a full duplicate
+ * of app.js, not a thin wrapper around it, directly contradicting
+ * app.js's own header comment ("both environments share the exact
+ * same route wiring with zero duplication"). Found while testing
+ * Session 4's helmet/CSP hardening: the headers worked correctly when
+ * app.js was loaded directly, but were completely absent when running
+ * `node backend/server.js` -- because this file never required app.js
+ * at all, so nothing added there could ever reach a real request going
+ * through this file. Two real, independent Express apps had been
+ * silently diverging (this file had device.js mounted; app.js didn't,
+ * until this same pass added it; app.js's error handler referenced
+ * store.js error classes that don't currently exist; this file was
+ * missing helmet/CSP/rate-limiting entirely) -- exactly the kind of
+ * drift Rule 6 exists to catch, just discovered from the opposite
+ * direction (adding something new revealed an existing gap, rather
+ * than a change breaking something that already worked).
+ *
+ * Before this rewrite, every difference between this file and app.js
+ * was individually reconciled INTO app.js first (see that file's own
+ * inline notes on each fix: the device.js mount, the 15mb body limit,
+ * the service-worker no-cache header, the explicit 404 handler, the
+ * corrected error handler) and verified live against app.js directly,
+ * so nothing this file used to do is lost by now deferring to it.
  *
  * Run with: node backend/server.js
  * Or:       npm start
  * ------------------------------------------------------------------
  */
 
-const express = require('express');
-const cors = require('cors');
-const path = require('path');
 const os = require('os');
+const app = require('./app');
 
-const projectsRoutes = require('./routes/projects');
-const deviceRoutes = require('./routes/device');
-const filesRoutes = require('./routes/files');
-const sessionsRoutes = require('./routes/sessions');
-const instructionsRoutes = require('./routes/instructions');
-const activityRoutes = require('./routes/activity');
-
-const app = express();
 const PORT = process.env.PORT || 7077;
-
-app.use(cors()); // Local tool, single device -- open CORS is fine here.
-app.use(express.json({ limit: '15mb' })); // generous limit for pasted code files
-
-// -----------------------------------------------------------------
-// Human-facing API (browser UI). No token required -- see auth.js
-// header comment for why: the device itself is the trust boundary.
-// -----------------------------------------------------------------
-app.use('/api/projects', projectsRoutes);
-app.use('/api/device', deviceRoutes);
-app.use('/api/projects/:projectId/files', filesRoutes.humanRouter);
-app.use('/api/projects/:projectId/sessions', sessionsRoutes.humanRouter);
-app.use('/api/projects/:projectId/instructions', instructionsRoutes.humanRouter);
-app.use('/api/projects/:projectId/activity', activityRoutes.humanRouter);
-
-// -----------------------------------------------------------------
-// AI-facing API (external agents). Every route here requires
-// "Authorization: Bearer <project-token>".
-// -----------------------------------------------------------------
-app.use('/api/ai/:projectId/files', filesRoutes.aiRouter);
-app.use('/api/ai/:projectId/sessions', sessionsRoutes.aiRouter);
-app.use('/api/ai/:projectId/instructions', instructionsRoutes.aiRouter);
-app.use('/api/ai/:projectId/activity', activityRoutes.aiRouter);
-
-// -----------------------------------------------------------------
-// Frontend static files (the PWA)
-// -----------------------------------------------------------------
-const FRONTEND_DIR = path.join(__dirname, '..', 'frontend');
-app.use(express.static(FRONTEND_DIR, {
-  setHeaders: (res, filePath) => {
-    // Service worker must never be cached, or updates to it won't be
-    // picked up by devices that already installed the PWA.
-    if (filePath.endsWith('service-worker.js')) {
-      res.setHeader('Cache-Control', 'no-cache');
-    }
-  },
-}));
-
-// SPA fallback: any non-API GET request serves index.html so client-side
-// routing (#/project/:id/workspace etc.) works on refresh.
-app.get(/^\/(?!api\/).*/, (req, res) => {
-  res.sendFile(path.join(FRONTEND_DIR, 'index.html'));
-});
-
-app.use((req, res) => {
-  res.status(404).json({ error: 'Not found.' });
-});
-
-// Basic error handler so a thrown error becomes JSON, not an HTML stack trace.
-app.use((err, req, res, next) => {
-  console.error(err);
-  // Typed errors (e.g. StorageReadOnlyError) carry their own correct
-  // status and an already-clear message -- use it as-is. Anything else
-  // keeps the original generic 500 behavior unchanged.
-  if (err.statusCode) {
-    return res.status(err.statusCode).json({ error: err.message });
-  }
-  res.status(500).json({ error: 'Internal server error.', detail: err.message });
-});
 
 function getLocalNetworkAddress() {
   const interfaces = os.networkInterfaces();
