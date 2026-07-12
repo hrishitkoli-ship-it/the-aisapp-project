@@ -30,7 +30,7 @@
  */
 
 const store = require('../db/store');
-const { verifyToken } = require('../utils/tokens');
+const { verifyToken, parseCompositeToken } = require('../utils/tokens');
 
 /** Extracts a Bearer token from the Authorization header, or null. */
 function extractBearer(req) {
@@ -76,19 +76,31 @@ async function requireAIToken(req, res, next) {
       return res.status(404).json({ error: 'Project not found.' });
     }
 
-    const token = extractBearer(req);
-    if (!token) {
+    const rawToken = extractBearer(req);
+    if (!rawToken) {
       return res.status(401).json({
         error: 'Missing AI token. Provide "Authorization: Bearer <token>".',
       });
     }
 
-    if (!verifyToken(token, project.tokenHash)) {
+    // Composite tokens carry a content-encryption key after a '.'
+    // (see tokens.js) -- the server only ever verifies the auth part.
+    // Bare tokens (no '.') parse through unchanged, so this is
+    // backward-compatible with any token issued before the composite
+    // scheme existed.
+    const { authToken, encryptionKey } = parseCompositeToken(rawToken);
+
+    if (!verifyToken(authToken, project.tokenHash)) {
       return res.status(403).json({ error: 'Invalid or revoked AI token.' });
     }
 
     req.isAI = true;
     req.project = project;
+    // NOT used by the server for anything -- exposed only so a route
+    // handler could theoretically log "this caller has encryption
+    // configured" for debugging. The server never encrypts or
+    // decrypts on a caller's behalf; that stays entirely client-side.
+    req.callerEncryptionKeyPresent = !!encryptionKey;
 
     // Optional: the caller may self-identify as a specific session via
     // this header, so activity/roster writes can be attributed to them.
