@@ -19,10 +19,23 @@ const crypto = require('crypto');
 
 const TOKEN_PREFIX = 'aihub_';
 
-function generateToken() {
+/** 12-char permanent device identity, embedded as a fixed prefix in
+ *  every project token created on this device (see routes/device.js).
+ *  Re-added here after being dropped in the composite-token rewrite --
+ *  see KNOWN_ISSUES.md for the full history; this is the second time
+ *  this exact function has gone missing from this file. */
+function generateDeviceCode() {
+  return crypto.randomBytes(6).toString('hex'); // 6 bytes -> 12 hex chars
+}
+
+/** deviceCode is optional so any existing caller that doesn't pass one
+ *  still gets a valid (if unprefixed) token -- but every current
+ *  caller in routes/projects.js does pass one, via
+ *  store.getOrCreateDeviceCode(generateDeviceCode). */
+function generateToken(deviceCode) {
   // 32 bytes -> 43 base64url chars, plenty of entropy for a local tool.
   const raw = crypto.randomBytes(32).toString('base64url');
-  return `${TOKEN_PREFIX}${raw}`;
+  return deviceCode ? `${TOKEN_PREFIX}${deviceCode}_${raw}` : `${TOKEN_PREFIX}${raw}`;
 }
 
 function hashToken(token) {
@@ -92,6 +105,7 @@ function parseCompositeToken(compositeToken) {
 
 module.exports = {
   generateToken,
+  generateDeviceCode,
   hashToken,
   verifyToken,
   TOKEN_PREFIX,
