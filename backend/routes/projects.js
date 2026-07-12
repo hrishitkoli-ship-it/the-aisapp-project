@@ -6,38 +6,45 @@
  * delete it. These routes are only ever called from the browser UI,
  * so they don't require requireAIToken -- the device itself is the
  * trust boundary, per the "no cloud auth" requirement.
+ *
+ * CHANGED: the original fs.mkdirSync(store.projectFilesDir(id)) /
+ * fs.rmSync(dir, {recursive:true}) calls are GONE. There's no
+ * directory to scaffold anymore -- inserting a row into
+ * aisapp_projects (via store.addProjectToIndex, below) already
+ * creates its `sessions`/`instructions`/`activity` columns with
+ * their schema defaults (see db/schema.sql). Deleting a project
+ * (store.removeProjectFromIndex) explicitly deletes its aisapp_files
+ * rows first, then the project row -- NOT via the schema's declared
+ * ON DELETE CASCADE, which was tested and found unreliable (SQLite's
+ * foreign_keys pragma defaults off, and isn't safely assumed to
+ * persist across the Serverless SDK's request-scoped transport). See
+ * store.js's removeProjectFromIndex for the full explanation.
+ *
+ * The store.projectDir() security check (guarding the OLD
+ * unsuffixed-path delete vulnerability Session 4 found) is also
+ * gone, because there's no second unsuffixed filesystem call left
+ * to protect -- store.removeProjectFromIndex() does scoped
+ * `DELETE ... WHERE id = ?` / `WHERE project_id = ?` calls with
+ * parameterized binds (never string-concatenated), which cannot
+ * resolve "outside" anything the way a real path could.
+ * assertValidProjectId() (called internally by every store.js
+ * function) still rejects a malformed projectId up front, preserving
+ * the same "fail closed on a bad id" property this file's original
+ * comment cared about.
  * ------------------------------------------------------------------
  */
 
 const express = require('express');
 const { nanoid } = require('nanoid');
 const store = require('../db/store');
-const { generateToken, generateDeviceCode, hashToken } = require('../utils/tokens');
+const { generateToken, hashToken, generateEncryptionKey, composeToken } = require('../utils/tokens');
 
 const router = express.Router();
 
-/**
- * SECURITY: store.projectDir() (called internally by getProject(),
- * regenerate, and delete below) now throws InvalidProjectIdError for any
- * projectId that would resolve outside PROJECTS_ROOT -- see db/store.js
- * for the full writeup of what this closes. Every route below that reads
- * req.params.projectId needs to catch that throw specifically and fail
- * closed with a clean 400, instead of letting it become an unhandled
- * 500. Mirrors how routes/files.js already catches PathSafetyError from
- * fileOps.js's safeResolve() -- same shape, same "log it, don't just
- * swallow it" reasoning, so a human watching the activity timeline can
- * see someone (or something) tried to walk out of the sandbox.
- *
- * Best-effort only: if projectId is malicious, there is no real project
- * whose activity.json we can safely write into (that's the whole point
- * of the block), so this logs to the ROOT-level activity concept instead
- * of a per-project one. There is no root activity log today -- rather
- * than invent one for a single call site, this logs to the server
- * console, which is the one sink that's always safe to write to
- * regardless of what projectId contained. A future session wiring up a
- * proper root-level security log (outside a single project) can replace
- * this without touching the containment logic itself.
- */
+/** Logs a blocked malformed-projectId attempt. Best-effort only: if
+ *  projectId itself is malformed, there's no real per-project row to
+ *  attribute this to, so (same as the original) this logs to the
+ *  server console rather than inventing a root-level activity log. */
 function logBlockedProjectIdAttempt(req, action, err) {
   console.warn(
     `[security] Blocked a ${action} attempt with an unsafe projectId ` +
@@ -46,34 +53,43 @@ function logBlockedProjectIdAttempt(req, action, err) {
 }
 
 // POST /api/projects  { name, description }
-// Creates a new project folder + metadata + a fresh AI token.
+// Creates a new project row + metadata + a fresh AI token.
 router.post('/', async (req, res, next) => {
-  const { name, description } = req.body || {};
-
-  if (!name || typeof name !== 'string' || !name.trim()) {
-    return res.status(400).json({ error: 'Project "name" is required.' });
-  }
-
   try {
+    const { name, description } = req.body || {};
+
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      return res.status(400).json({ error: 'Project "name" is required.' });
+    }
+
     const id = nanoid(10);
-    const deviceCode = await store.getOrCreateDeviceCode(generateDeviceCode);
-    const rawToken = generateToken(deviceCode);
+    const rawToken = generateToken();
+    // Generated once, shown once (below), NEVER stored -- see tokens.js
+    // header for why the server has no legitimate use for this even
+    // hashed. If lost, the caller loses decrypt capability for any
+    // content it wrote, same failure mode as losing any other secret;
+    // regenerate-token issues a NEW key too (see that route below),
+    // meaning content encrypted under the old key becomes unreadable
+    // via the new composite token -- this is a real, known tradeoff
+    // of not storing the key anywhere, not an oversight.
+    const encryptionKey = generateEncryptionKey();
 
     const project = {
       id,
       name: name.trim(),
       description: (description || '').trim(),
-      deviceCode,
       tokenHash: hashToken(rawToken),
       createdAt: new Date().toISOString(),
       tokenGeneratedAt: new Date().toISOString(),
     };
 
-    // Scaffold the on-disk structure for this project.
-    store.ensureProjectFilesDir(id);
-    await store.saveProject(id, project);
-    await store.saveSessions(id, []);
-    await store.saveInstructions(id, { notes: '', functionalities: [], assignments: [] });
+    // addProjectToIndex INSERTs the row; sessions/instructions/activity
+    // columns get their schema defaults automatically (empty array,
+    // empty-shaped instructions object, empty array respectively) --
+    // no separate saveSessions/saveInstructions calls needed for an
+    // empty new project the way the old fs-based version required
+    // (each was a separate file that had to exist on disk).
+    await store.addProjectToIndex(project);
     await store.appendActivity(id, {
       id: nanoid(8),
       type: 'project_created',
@@ -82,52 +98,58 @@ router.post('/', async (req, res, next) => {
       timestamp: new Date().toISOString(),
     });
 
-    await store.addProjectToIndex({ id, name: project.name, createdAt: project.createdAt });
-
-    // The raw token is returned exactly once, here at creation time.
+    // The raw composite token (auth + encryption key) is returned
+    // exactly once, here at creation time.
     res.status(201).json({
       ...stripSecret(project),
-      token: rawToken,
+      token: composeToken(rawToken, encryptionKey),
     });
   } catch (err) {
+    if (err instanceof store.AccountSizeLimitError) {
+      return res.status(413).json({ error: err.message });
+    }
     next(err);
   }
 });
 
 // GET /api/projects - list all projects (no secrets included).
-router.get('/', (req, res) => {
-  const index = store.listProjects();
-  res.json(index);
+router.get('/', async (req, res, next) => {
+  try {
+    const index = await store.listProjects();
+    res.json(index);
+  } catch (err) {
+    next(err);
+  }
 });
 
 // GET /api/projects/:projectId - fetch one project's metadata (no token).
-router.get('/:projectId', (req, res) => {
-  let project;
+router.get('/:projectId', async (req, res, next) => {
   try {
-    project = store.getProject(req.params.projectId);
-  } catch (err) {
-    if (err instanceof store.InvalidProjectIdError) {
-      logBlockedProjectIdAttempt(req, 'read', err);
-      return res.status(400).json({ error: 'Invalid project id.' });
+    let project;
+    try {
+      project = await store.getProject(req.params.projectId);
+    } catch (err) {
+      if (err instanceof store.InvalidProjectIdError) {
+        logBlockedProjectIdAttempt(req, 'read', err);
+        return res.status(400).json({ error: 'Invalid project id.' });
+      }
+      throw err;
     }
-    throw err;
+    if (!project) return res.status(404).json({ error: 'Project not found.' });
+    res.json(stripSecret(project));
+  } catch (err) {
+    next(err);
   }
-  if (!project) return res.status(404).json({ error: 'Project not found.' });
-  res.json(stripSecret(project));
 });
 
 // POST /api/projects/:projectId/regenerate-token
 // Invalidates the old token immediately and returns a new raw token once.
-// The device code embedded in the token is preserved -- only the key
-// portion rotates. (Projects created before the device-code split have
-// no deviceCode field; this backfills it from the device identity
-// rather than erroring, so pre-existing projects keep working.)
 router.post('/:projectId/regenerate-token', async (req, res, next) => {
-  const { projectId } = req.params;
   try {
+    const { projectId } = req.params;
     let project;
     try {
-      project = store.getProject(projectId);
+      project = await store.getProject(projectId);
     } catch (err) {
       if (err instanceof store.InvalidProjectIdError) {
         logBlockedProjectIdAttempt(req, 'regenerate-token', err);
@@ -137,11 +159,17 @@ router.post('/:projectId/regenerate-token', async (req, res, next) => {
     }
     if (!project) return res.status(404).json({ error: 'Project not found.' });
 
-    const deviceCode = project.deviceCode || (await store.getOrCreateDeviceCode(generateDeviceCode));
-    const rawToken = generateToken(deviceCode);
+    const rawToken = generateToken();
+    // A fresh key too -- see the creation route's comment on why this
+    // is a real tradeoff (content encrypted under the OLD key becomes
+    // unreadable with the new composite token) rather than an
+    // oversight. Regenerating token but keeping the old key isn't an
+    // option since the key is never stored server-side at all to
+    // "keep" -- it only ever existed in whatever composite token was
+    // last shown.
+    const encryptionKey = generateEncryptionKey();
     const updated = {
       ...project,
-      deviceCode,
       tokenHash: hashToken(rawToken),
       tokenGeneratedAt: new Date().toISOString(),
     };
@@ -150,11 +178,11 @@ router.post('/:projectId/regenerate-token', async (req, res, next) => {
       id: nanoid(8),
       type: 'token_regenerated',
       actor: 'human',
-      message: 'AI token regenerated. The previous token is now invalid.',
+      message: 'AI token regenerated. The previous token (and its content-encryption key) is now invalid.',
       timestamp: new Date().toISOString(),
     });
 
-    res.json({ ...stripSecret(updated), token: rawToken });
+    res.json({ ...stripSecret(updated), token: composeToken(rawToken, encryptionKey) });
   } catch (err) {
     next(err);
   }
@@ -162,11 +190,11 @@ router.post('/:projectId/regenerate-token', async (req, res, next) => {
 
 // DELETE /api/projects/:projectId - remove a project entirely.
 router.delete('/:projectId', async (req, res, next) => {
-  const { projectId } = req.params;
   try {
+    const { projectId } = req.params;
     let project;
     try {
-      project = store.getProject(projectId);
+      project = await store.getProject(projectId);
     } catch (err) {
       if (err instanceof store.InvalidProjectIdError) {
         logBlockedProjectIdAttempt(req, 'delete', err);
@@ -176,24 +204,11 @@ router.delete('/:projectId', async (req, res, next) => {
     }
     if (!project) return res.status(404).json({ error: 'Project not found.' });
 
-    // store.projectDir() throws InvalidProjectIdError under the same
-    // condition as the getProject() call above, so in practice this can't
-    // hit the catch below without the earlier one having already caught
-    // it first -- but this is the exact call site the Session 4 audit
-    // found actually vulnerable (unsuffixed, unlike getProject()'s
-    // internal jsonPath() call), so it gets its own explicit guard rather
-    // than relying on that being true forever as this file changes.
-    try {
-      store.projectDir(projectId);
-    } catch (err) {
-      if (err instanceof store.InvalidProjectIdError) {
-        logBlockedProjectIdAttempt(req, 'delete', err);
-        return res.status(400).json({ error: 'Invalid project id.' });
-      }
-      throw err;
-    }
-
-    store.removeProjectDir(projectId);
+    // A single scoped DELETE ... WHERE id = $1, cascading to
+    // aisapp_files automatically via the FK constraint. No second
+    // unsuffixed filesystem call exists anymore, so there's no
+    // equivalent of the old Session-4-found vulnerability left to
+    // guard against here.
     await store.removeProjectFromIndex(projectId);
     res.json({ success: true });
   } catch (err) {
