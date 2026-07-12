@@ -207,11 +207,21 @@ Currently also the session mid-decision on Known Failure Signature #4
 3's follow-up ledger entry — that's this lane's call to make, not
 something another session should pick a side on unasked.
 
-### Session 3 — Project Management UI + onboarding
+### Session 3 — Project Management UI + onboarding, now also covering Session 5's retired scope
 **Status: shipped** — see Session Ledger. Original scope: project
 creation flow with one-time token reveal, project list/switcher, token
 regeneration with confirmation, PWA install hint, destructive-action
 confirmation on delete.
+
+**Per direct human instruction, also now covering verification/
+integration/docs** — the substance of Session 5's retired lane, on top
+of (not instead of) Rule 6 applying to all four sessions equally. In
+practice this has meant: full-lifecycle testing against a live server
+after any handler rewrite (not just the one symptom that prompted the
+rewrite), catching cases where a file's comments describe a migration
+as further along than the code actually is, and keeping this file's
+Known Failure Signatures / Session Ledger current when that happens —
+see Session 3's ledger entries below for concrete examples.
 
 ### Session 4 — Security & hardening review
 **Status: shipped, ongoing** — see Session Ledger. Audit, don't rebuild —
@@ -267,6 +277,8 @@ the same thing a third time.
 | 3 | An `async` Express route handler throws/rejects with no `try/catch`, and Express 4 doesn't route that to error middleware automatically | Missing `try/catch` + `next(err)` around `await` calls in a route handler | Every async handler needs its own `try/catch`, or a wrapper that catches and forwards to `next()`. Found independently **twice** — audit any new async route handler for this specifically | Session 4 (device DELETE crash), Session 3 (`routes/projects.js` create/regenerate/delete) |
 | 4 | **[CURRENTLY OPEN, SCOPE WIDER THAN FIRST DOCUMENTED]** File *content* storage is implemented twice, disagreeing: `fileOps.js` was rewritten to call `store.run()` against Turso, but the live `store.js` is still the fs-JSON version with no `run()` method. **Session 4 found this same root cause (route code written against a schema that isn't the live one) is not confined to `files.js`/`fileOps.js`** — `routes/projects.js`'s own header comment describes an `aisapp_projects` Turso table with automatic `ON DELETE CASCADE` and schema-default columns that do not exist in the live JSON-file `store.js`. This is why `POST /api/projects` currently creates an index entry but never writes a real `project.json` — confirmed live, not inferred (a created project immediately 404s on every subsequent read). See row 6 below for a related, now-fixed symptom of this same mismatch | Two (or more) sessions' work landed on top of each other mid-decision, before either fully replaced the other, and the affected surface is broader than first realized | Not a pick-a-line-and-fix-it bug — a real architectural call (Turso table vs. some other approach) that Session 2 is mid-deciding. Don't touch `files.js`/`fileOps.js`/`routes/projects.js` without reading Session 3's flag in the Session Ledger first. **If you find a THIRD file exhibiting this pattern, that's the point this needs to stop being "wait for Session 2" and become an all-hands architectural decision** — see Rule 6/Maintaining This File on updating this row rather than creating a fourth near-duplicate one | Session 3, verified live (`store.run is not a function`). Scope widened by Session 4, verified live (`project.json` never written, every created project immediately unreachable) |
 | 5 | A storage write fails because the filesystem is read-only (e.g. a serverless environment), and the raw `fs` error surfaces as an opaque 500 | Vercel's deployed bundle is read-only outside `/tmp`; no distinction was made between "bug" and "expected environment limitation" | Catch the specific read-only error codes (`EROFS`/`EACCES`/`ENOENT`/`EPERM` — confirmed via a real read-only mount test, not assumed; deliberately excludes `ENOSPC` so a real full-disk problem doesn't get mislabeled) and throw a typed error the central handler turns into a clean `503` | Session 3 |
+| 6 | A route's own comments describe a Turso/SQL schema (table names, FK cascades, parameterized queries) that doesn't exist anywhere in the actual `store.js` it calls | A migration was planned/assumed complete and documented as such in code comments, before the underlying file was actually changed to match | Don't trust a file's comments about *another* file's behavior — verify by reading that other file directly. `grep` for the specific function/table names the comment claims exist | Session 3 (`routes/projects.js` header + inline comments, twice — see Session Ledger) |
+| 7 | A route handler is rewritten for a new concern (e.g. bundling an encryption key into the token) and silently drops an unrelated call it used to make (e.g. `saveProject()`, `generateDeviceCode()`), because the rewrite was done against a mental model of the datastore that had already changed elsewhere | Two independent pieces of in-flight work (a datastore migration + a token-format change) landed on the same file at different times, each written against a different assumption about the other | After any rewrite of a route handler, re-run the FULL lifecycle for that resource (create, single-lookup, update, delete) against the real server — not just the specific case the rewrite was for. This is genuinely Rule 6, just stated for the specific case of "a handler got rewritten," not only "new code got written" | Session 3 (device-code embedding dropped a 2nd time; `saveProject()`/`removeProjectDir()` both silently dropped in the same rewrite) |
 | 6 | Two files that are supposed to share one definition (`app.js` as the shared Express app; `server.js`/`api/index.js` as its two consumers) silently diverge because one of them was never actually rewritten to depend on the other — it just independently rebuilt an equivalent-looking copy instead | `server.js` predates the `app.js` split and was never actually converted to import it, despite `app.js`'s own header comment claiming it was. No test exercised `server.js` specifically after `app.js` started gaining new middleware (helmet/CSP, rate limiting), so the drift wasn't visible until something added to `app.js` was checked against the real entry point and found completely absent | When a refactor claims "two consumers share one definition," grep for the actual `require()`/`import` proving that, don't trust the comment. If a fix only seems to take effect through one of two supposedly-equivalent entry points, suspect this pattern immediately | Session 4 — found while verifying CSP headers actually reached `node backend/server.js`, the real local/Termux entry point, not just `app.js` loaded in isolation |
 | 7 | A route's own comment says "no secrets included" / matches clearly-intended behavior, but the actual response leaks a secret field anyway, because the route was written against a different store.js/schema shape than the one actually live (same root cause family as row 4, different concrete symptom) | `GET /api/projects` returned every project's `tokenHash` in the clear to any unauthenticated caller — the route's own `stripSecret()` helper exists and is correctly used by three OTHER routes in the same file, just not this one, because `store.listProjects()` on the live store.js returns a different (fuller) shape than whatever this route was written expecting | Don't trust a route's own comment describing its output shape — check what the live `store.*` function actually returns and confirm the response is filtered through the same secret-stripping helper every sibling route in the file already uses. Fixed by routing the response through the existing `stripSecret()` (`.map(stripSecret)`) rather than inventing a new filtering approach | Session 4 — found live, not by code review, while testing an unrelated fix (`app.js`/`server.js` reconciliation) end-to-end |
 
@@ -332,6 +344,51 @@ Flagged for Session 2, who was already mid-decision on this as of this
 entry. Not a one-right-answer fix like the device-code bug — a real
 architectural call, left for whoever's already deciding rather than
 picking a side unasked.
+
+**Follow-up (same session, human-requested): took over Session 5's
+retired lane — verification/integration/docs, per Rule 6 and the human's
+direct instruction, on top of this session's own Project Management UI
+lane.**
+
+First finding under the new scope: the composite-token commit
+(`tokens.js`'s auth+encryption-key bundling) re-broke the device-code fix
+above — 2nd time this exact function has gone missing (Known Failure
+Signature #7). Also found, via full-lifecycle testing rather than just
+re-checking the one thing that broke last time: `routes/projects.js`'s
+create handler no longer called `store.saveProject()`, only
+`addProjectToIndex()` — new projects existed in the list but 404d on
+every single-project lookup, meaning regenerate-token and delete were
+broken for every project created after this landed. Delete had the
+mirror problem: `store.removeProjectDir()` was dropped too, so delete
+reported success while silently leaving the entire project directory on
+disk — a real violation of this session's own UI copy promising
+"permanently removes... all its files."
+
+Root cause for all three: `routes/projects.js`'s comments (header and
+inline) described `store.js` as Turso-backed with a real SQL schema —
+table names, FK cascades, `assertValidProjectId()` — none of which exist
+in the actual file, which is still the original fs-based datastore
+(Known Failure Signature #6). The comments look like they were written
+against an intended migration, before `store.js` was actually changed to
+match.
+
+Fixed: restored `generateDeviceCode()` (composed correctly with the new
+`authToken.encryptionKey` format — device code lives entirely in the
+auth portion, no conflict), restored `saveProject()` on create and
+`removeProjectDir()` on delete, corrected every comment that described
+the fictional schema. Verified the full lifecycle end-to-end against a
+live server, not just the specific symptom: create → device-code
+embedding confirmed (two projects on the same device share the same
+12-char code) → `project.json` confirmed present on disk → single-lookup
+confirmed 200 (was 404) → regenerate confirmed (device code preserved
+across regeneration) → delete confirmed both API success AND actual
+directory removal from disk → post-delete single-lookup confirmed 404.
+
+Added Known Failure Signatures #6 and #7 above — the pattern here
+(comments describe a migration as complete, a rewrite silently drops an
+unrelated call because it was written against stale assumptions about
+the datastore) is distinct from #3/#4 and worth its own entries so a
+future rewrite of this file checks for it explicitly.
 
 ### Session 4 — Security & hardening review
 **Status: shipped, ongoing.** Audited `fileOps.js`/`store.js` path-safety,
