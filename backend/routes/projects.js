@@ -113,10 +113,28 @@ router.post('/', async (req, res, next) => {
 });
 
 // GET /api/projects - list all projects (no secrets included).
+//
+// SECURITY FIX (Session 4, found while re-verifying the app.js/
+// server.js reconciliation in this same pass): this route's own
+// comment always said "no secrets included," but store.listProjects()
+// on the currently-live JSON-file store.js returns the FULL project
+// object pushed by addProjectToIndex() -- including tokenHash -- not
+// a separate lightweight index shape. Confirmed live: a real
+// GET /api/projects response contained every project's tokenHash in
+// the clear, to any caller, no auth required. Same root cause as
+// Known Failure Signature #4 (route code written against a different,
+// not-currently-live store.js shape) -- but unlike that broader
+// architectural question, this specific fix is safe regardless of
+// which storage design eventually wins: stripSecret() already exists
+// in this exact file and is already used correctly by the other three
+// routes below (GET /:id, regenerate-token, and implicitly by never
+// returning it from delete) -- this route was simply the one place it
+// got missed, not a case of picking a side on the open architecture
+// question.
 router.get('/', async (req, res, next) => {
   try {
     const index = await store.listProjects();
-    res.json(index);
+    res.json(index.map(stripSecret));
   } catch (err) {
     next(err);
   }
