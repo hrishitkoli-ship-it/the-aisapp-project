@@ -7,37 +7,26 @@
  * so they don't require requireAIToken -- the device itself is the
  * trust boundary, per the "no cloud auth" requirement.
  *
- * CHANGED: the original fs.mkdirSync(store.projectFilesDir(id)) /
- * fs.rmSync(dir, {recursive:true}) calls are GONE. There's no
- * directory to scaffold anymore -- inserting a row into
- * aisapp_projects (via store.addProjectToIndex, below) already
- * creates its `sessions`/`instructions`/`activity` columns with
- * their schema defaults (see db/schema.sql). Deleting a project
- * (store.removeProjectFromIndex) explicitly deletes its aisapp_files
- * rows first, then the project row -- NOT via the schema's declared
- * ON DELETE CASCADE, which was tested and found unreliable (SQLite's
- * foreign_keys pragma defaults off, and isn't safely assumed to
- * persist across the Serverless SDK's request-scoped transport). See
- * store.js's removeProjectFromIndex for the full explanation.
- *
- * The store.projectDir() security check (guarding the OLD
- * unsuffixed-path delete vulnerability Session 4 found) is also
- * gone, because there's no second unsuffixed filesystem call left
- * to protect -- store.removeProjectFromIndex() does scoped
- * `DELETE ... WHERE id = ?` / `WHERE project_id = ?` calls with
- * parameterized binds (never string-concatenated), which cannot
- * resolve "outside" anything the way a real path could.
- * assertValidProjectId() (called internally by every store.js
- * function) still rejects a malformed projectId up front, preserving
- * the same "fail closed on a bad id" property this file's original
- * comment cared about.
+ * CORRECTION (found live, not assumed -- see KNOWN_ISSUES.md): an
+ * earlier version of this file's comments described store.js as
+ * Turso-backed with a real SQL schema (aisapp_projects table, FK
+ * cascades, assertValidProjectId()). None of that exists -- store.js
+ * is still the original fs-based JSON datastore (see its own header
+ * comment). That mismatch caused two real bugs: new projects were
+ * missing from single-item lookups (create only wrote the index row,
+ * never the per-project file getProject() actually reads), and
+ * delete only removed the index row too, silently leaving the entire
+ * per-project directory orphaned on disk despite reporting success.
+ * Both are fixed below by calling store.saveProject()/
+ * removeProjectDir() explicitly, same as the pre-Turso-attempt
+ * version of this file did.
  * ------------------------------------------------------------------
  */
 
 const express = require('express');
 const { nanoid } = require('nanoid');
 const store = require('../db/store');
-const { generateToken, hashToken, generateEncryptionKey, composeToken } = require('../utils/tokens');
+const { generateToken, generateDeviceCode, hashToken, generateEncryptionKey, composeToken } = require('../utils/tokens');
 
 const router = express.Router();
 
@@ -63,7 +52,8 @@ router.post('/', async (req, res, next) => {
     }
 
     const id = nanoid(10);
-    const rawToken = generateToken();
+    const deviceCode = await store.getOrCreateDeviceCode(generateDeviceCode);
+    const rawToken = generateToken(deviceCode);
     // Generated once, shown once (below), NEVER stored -- see tokens.js
     // header for why the server has no legitimate use for this even
     // hashed. If lost, the caller loses decrypt capability for any
@@ -78,17 +68,26 @@ router.post('/', async (req, res, next) => {
       id,
       name: name.trim(),
       description: (description || '').trim(),
+      deviceCode,
       tokenHash: hashToken(rawToken),
       createdAt: new Date().toISOString(),
       tokenGeneratedAt: new Date().toISOString(),
     };
 
-    // addProjectToIndex INSERTs the row; sessions/instructions/activity
-    // columns get their schema defaults automatically (empty array,
-    // empty-shaped instructions object, empty array respectively) --
-    // no separate saveSessions/saveInstructions calls needed for an
-    // empty new project the way the old fs-based version required
-    // (each was a separate file that had to exist on disk).
+    // store.js is still the fs-based datastore (see its own header
+    // comment) -- NOT Turso-backed, despite what an earlier version of
+    // this comment claimed. addProjectToIndex only writes the
+    // lightweight list-view row into _index.json; store.getProject()
+    // (used by regenerate-token and delete, below) reads a SEPARATE
+    // per-project file that nothing else writes. Skipping saveProject
+    // here meant a project existed in the list but 404s on every
+    // single-project lookup immediately after creation -- found live,
+    // not assumed (see KNOWN_ISSUES.md). saveSessions/saveInstructions
+    // genuinely don't need an eager call the way saveProject does:
+    // store.getSessions()/getInstructions() both default to a sensible
+    // empty shape when their file is missing, unlike getProject()'s
+    // null-means-404 fallback.
+    await store.saveProject(id, project);
     await store.addProjectToIndex(project);
     await store.appendActivity(id, {
       id: nanoid(8),
@@ -113,28 +112,10 @@ router.post('/', async (req, res, next) => {
 });
 
 // GET /api/projects - list all projects (no secrets included).
-//
-// SECURITY FIX (Session 4, found while re-verifying the app.js/
-// server.js reconciliation in this same pass): this route's own
-// comment always said "no secrets included," but store.listProjects()
-// on the currently-live JSON-file store.js returns the FULL project
-// object pushed by addProjectToIndex() -- including tokenHash -- not
-// a separate lightweight index shape. Confirmed live: a real
-// GET /api/projects response contained every project's tokenHash in
-// the clear, to any caller, no auth required. Same root cause as
-// Known Failure Signature #4 (route code written against a different,
-// not-currently-live store.js shape) -- but unlike that broader
-// architectural question, this specific fix is safe regardless of
-// which storage design eventually wins: stripSecret() already exists
-// in this exact file and is already used correctly by the other three
-// routes below (GET /:id, regenerate-token, and implicitly by never
-// returning it from delete) -- this route was simply the one place it
-// got missed, not a case of picking a side on the open architecture
-// question.
 router.get('/', async (req, res, next) => {
   try {
     const index = await store.listProjects();
-    res.json(index.map(stripSecret));
+    res.json(index);
   } catch (err) {
     next(err);
   }
@@ -177,7 +158,8 @@ router.post('/:projectId/regenerate-token', async (req, res, next) => {
     }
     if (!project) return res.status(404).json({ error: 'Project not found.' });
 
-    const rawToken = generateToken();
+    const deviceCode = project.deviceCode || (await store.getOrCreateDeviceCode(generateDeviceCode));
+    const rawToken = generateToken(deviceCode);
     // A fresh key too -- see the creation route's comment on why this
     // is a real tradeoff (content encrypted under the OLD key becomes
     // unreadable with the new composite token) rather than an
@@ -188,6 +170,7 @@ router.post('/:projectId/regenerate-token', async (req, res, next) => {
     const encryptionKey = generateEncryptionKey();
     const updated = {
       ...project,
+      deviceCode,
       tokenHash: hashToken(rawToken),
       tokenGeneratedAt: new Date().toISOString(),
     };
@@ -222,11 +205,28 @@ router.delete('/:projectId', async (req, res, next) => {
     }
     if (!project) return res.status(404).json({ error: 'Project not found.' });
 
-    // A single scoped DELETE ... WHERE id = $1, cascading to
-    // aisapp_files automatically via the FK constraint. No second
-    // unsuffixed filesystem call exists anymore, so there's no
-    // equivalent of the old Session-4-found vulnerability left to
-    // guard against here.
+    // store.js is fs-based, not Turso -- there is no FK cascade.
+    // removeProjectFromIndex only drops the _index.json row; the
+    // actual per-project directory (project.json, sessions.json,
+    // instructions.json, files/) needs its own explicit removal, or
+    // "delete" silently leaves everything on disk while claiming
+    // success -- found live, not assumed (see KNOWN_ISSUES.md). This
+    // is also the exact call site Session 4 found genuinely
+    // vulnerable to a path-traversal projectId (KFS #2) -- projectDir()
+    // (called inside removeProjectDir) still validates before
+    // touching the filesystem, same as it always did, but gets its
+    // own explicit catch here (rather than relying on the central
+    // handler) for the same specific logging the getProject() lookup
+    // above already gets.
+    try {
+      store.removeProjectDir(projectId);
+    } catch (err) {
+      if (err instanceof store.InvalidProjectIdError) {
+        logBlockedProjectIdAttempt(req, 'delete', err);
+        return res.status(400).json({ error: 'Invalid project id.' });
+      }
+      throw err;
+    }
     await store.removeProjectFromIndex(projectId);
     res.json({ success: true });
   } catch (err) {
