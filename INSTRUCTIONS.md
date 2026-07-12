@@ -1,14 +1,49 @@
 # INSTRUCTIONS.md — AI Collaborative Hub
 
-Read this fully before touching any file. This is a **local-first PWA**
-(no cloud login, no database server) that lets a human run several AI coding
-sessions against one project from a phone. Ironically, this project itself
-is being built by multiple AI sessions — you are one of them.
+**Local-first PWA — human + multiple AI coding sessions, one project, from a phone.**
+**Repo:** `hrishitkoli-ship-it/the-aisapp-project` (private)
 
-Repo: `hrishitkoli-ship-it/the-aisapp-project` (private)
-Stack: Node 18+ / Express / vanilla JS backend, frontend in progress
-(Session 1 + Session 3 lanes done; Session 2 still outstanding -- see below).
-No native deps (no SQLite, no Docker) — everything must run in Termux.
+Read this fully before touching any file. Ironically, this project is itself
+being built by multiple concurrent AI sessions — you are one of them, the
+same way create-bedrock's INSTRUCTIONS.md (whose structure this file now
+follows) coordinates that project's five sessions.
+
+> _Maintenance note (restructure, this session): adopted create-bedrock's
+> INSTRUCTIONS.md structure at the human's explicit request — Table of
+> Contents, numbered Rules, a formal Session Start Procedure (including its
+> "your own Requests outrank your backlog" ordering, which that project
+> added after a real missed-request incident — importing it here
+> preemptively rather than waiting to repeat it), a Known Failure
+> Signatures table, and a closing Maintaining This File section. No
+> technical content was invented in the move — every fact below already
+> existed in the prior flat version; this pass only reorganized it. One
+> real change alongside the restructure, per explicit human instruction:
+> **Session 5 (Testing, docs, and integration) is retired as a dedicated
+> lane.** Its historical ledger entry is kept as-is below (real, shipped
+> work). Going forward its responsibility — verify your own work against
+> the real server, don't just claim it — is Rule 6, binding on all four
+> remaining sessions, matching how create-bedrock handles verification
+> (its own Rule 6, no dedicated testing session either). Lane assignments
+> below are now "(4 sessions)."
+>
+> **Still true and still the most urgent thing in this file:** file
+> *content* storage is currently broken in production. See Known Failure
+> Signature #4 and the Session 3 ledger entry below before touching
+> anything under `backend/routes/files.js` or `backend/utils/fileOps.js`.
+
+---
+
+## 📑 TABLE OF CONTENTS
+
+- [Current State](#current-state-as-of-this-write-up)
+- [Non-Negotiable Architecture Rules](#non-negotiable-architecture-rules-do-not-violate-these)
+- [Rule 0 — Session Start Procedure](#rule-0--session-start-procedure)
+- [Lane Assignments (4 sessions)](#lane-assignments-4-sessions)
+- [Coordination Protocol](#coordination-protocol)
+- [Known Failure Signatures](#-known-failure-signatures-quick-lookup)
+- [Session Ledger](#session-ledger)
+- [Definition of Done](#definition-of-done-for-the-whole-project)
+- [Maintaining This File](#maintaining-this-file)
 
 ---
 
@@ -16,180 +51,186 @@ No native deps (no SQLite, no Docker) — everything must run in Termux.
 
 ```
 the-aisapp-project/
+├── api/index.js              Vercel serverless entry (re-exports app.js)  ✅ DONE
+├── vercel.json                Rewrites all routes to api/index.js         ✅ DONE
+├── scripts/vercel-build-public.js  Copies frontend/ -> gitignored public/ ✅ DONE
 ├── backend/
-│   ├── server.js            Entry point, route wiring        ✅ DONE
-│   ├── db/store.js          JSON-file datastore + locking     ✅ DONE
-│   ├── middleware/auth.js   Human vs AI identity              ✅ DONE
+│   ├── app.js                Express app, no .listen() -- shared by      ✅ DONE
+│   │                         server.js (local) and api/index.js (Vercel)
+│   ├── server.js             Thin local-dev wrapper: calls app.listen()  ✅ DONE
+│   ├── db/store.js           Turso-backed datastore (metadata only --    ⚠️ SEE KFS #4
+│   │                         see Known Failure Signature #4)
+│   ├── db/store.turso.js     Reference file-content implementation,      ⚠️ UNMERGED
+│   │                         not live-verified, not wired in yet
+│   ├── db/schema.sql          Turso schema + size-cap triggers            ✅ DONE
+│   ├── middleware/auth.js    Human vs AI identity, typed-error aware     ✅ DONE
 │   ├── routes/
-│   │   ├── activity.js      Read-only timeline                ✅ DONE
-│   │   ├── files.js         Tree/read/write/delete + conflict ✅ DONE
-│   │   ├── instructions.js  Notes/functionalities/assignments ✅ DONE
-│   │   ├── projects.js      Create/list/regen-token/delete    ✅ DONE
-│   │   └── sessions.js      AI Session Roster                 ✅ DONE
+│   │   ├── activity.js       Read-only timeline                          ✅ DONE
+│   │   ├── device.js         Device identity (12-char code), DELETE      ✅ DONE
+│   │   ├── files.js          Tree/read/write/delete + conflict           ⚠️ BROKEN, see KFS #4
+│   │   ├── instructions.js   Notes/functionalities/assignments           ✅ DONE
+│   │   ├── projects.js       Create/list/regen-token/delete              ✅ DONE
+│   │   └── sessions.js       AI Session Roster                           ✅ DONE
 │   └── utils/
-│       ├── fileOps.js       Path safety + versioning          ✅ DONE
-│       └── tokens.js        Token gen/hash/verify             ✅ DONE
+│       ├── fileOps.js        Path safety + versioning (rewritten for     ⚠️ SEE KFS #4
+│       │                     Turso file storage that store.js lacks)
+│       └── tokens.js         Token gen/hash/verify, device-code aware    ✅ DONE
 ├── frontend/
-│   ├── index.html            App shell, PWA meta, script loads ✅ DONE (S1)
-│   ├── manifest.json          PWA manifest                     ✅ DONE (S1)
-│   ├── service-worker.js      Offline app-shell caching         ✅ DONE (S1)
+│   ├── index.html             App shell, PWA meta, script loads          ✅ DONE (S1)
+│   ├── manifest.json          PWA manifest                               ✅ DONE (S1)
+│   ├── service-worker.js      Offline app-shell caching                  ✅ DONE (S1)
 │   ├── css/
-│   │   ├── base.css           Shared tokens, light+dark, shell  ✅ DONE (S1)
-│   │   ├── projects.css       Project list/create/manage UI     ✅ DONE (S3)
-│   │   └── workspace.css      Tree/editor/diff view             ✅ DONE (S1)
+│   │   ├── base.css           Shared tokens, light+dark, shell           ✅ DONE (S1)
+│   │   ├── projects.css       Project list/create/manage UI              ✅ DONE (S3)
+│   │   ├── workspace.css      Tree/editor/diff view                      ✅ DONE (S1)
+│   │   └── instructions-roster.css  Roster + Instructions styling        ✅ DONE (S2)
 │   ├── js/
-│   │   ├── theme.js           Dark/light toggle                 ✅ DONE (S1)
-│   │   ├── router.js          Hash router + app-shell chrome     ✅ DONE (S1)
-│   │   ├── projects.js        ProjectManager (list/create/token) ✅ DONE (S3)
+│   │   ├── theme.js           Dark/light toggle                         ✅ DONE (S1)
+│   │   ├── router.js          Hash router + app-shell chrome             ✅ DONE (S1)
+│   │   ├── projects.js        ProjectManager (list/create/token)         ✅ DONE (S3)
+│   │   ├── activity.js        Shared activity-timeline component         ✅ DONE (S2)
+│   │   ├── roster.js          Page 2: AI Session Roster                  ✅ DONE (S2)
+│   │   ├── instructions.js    Page 3: Instructions/approval gate         ✅ DONE (S2)
 │   │   └── pages/
-│   │       ├── workspace.js   Page 1: tree/editor/conflict UI   ✅ DONE (S1)
-│   │       ├── roster.js      Page 2: AI Session Roster          ❌ GAP (S2)
-│   │       └── instructions.js Page 3: Instructions/approval gate ❌ GAP (S2)
-│   └── icons/                 PWA icons (192/512)                ✅ DONE (S1)
-├── projects/                 Runtime data, gitignored
-├── package.json               express, cors, nanoid only
-└── README.md                  Full API reference — READ THIS FIRST
+│   │       └── workspace.js   Page 1: tree/editor/conflict UI            ✅ DONE (S1)
+│   └── icons/                 PWA icons (192/512)                        ✅ DONE (S1)
+├── projects/                  Local-dev runtime data, gitignored
+├── public/                    Build artifact (vercel-build-public.js), gitignored
+├── SECURITY.md                 Trust model, rate limiting, the open auth gap
+├── IDEAS.md                    Proposal board -- human approves, nobody self-approves
+├── KNOWN_ISSUES.md             Smaller, resolved-or-tracked issues log
+├── .env.example                 Turso + local-dev env var template
+├── package.json                 express, cors, nanoid, @tursodatabase/serverless
+└── README.md                    Full API reference — READ THIS FIRST
 ```
 
-**The backend and Session 1/3's frontend lanes are functionally complete
-and tested end-to-end against the real server (not mocked responses) --
-see git log for Session 1's verification notes.** The remaining gap is
-Session 2's two pages (Roster, Instructions), which the router already
-routes to with an honest "not built yet" placeholder rather than a crash,
-so the app is fully navigable and usable for Workspace + project management
-right now. Read `README.md` in the repo root before writing any code — it
-documents every route, the two-identity model, and conflict handling in
-detail.
+**All three frontend pages and the whole backend route surface are built.**
+The two live, unresolved gaps are: (1) file content storage, currently
+broken — see Known Failure Signature #4 — and (2) real authentication on
+human-facing routes, an explicitly open architectural question per
+`SECURITY.md` (not a bug, a decision not yet made — see that file before
+assuming it's handled just because rate limiting landed near it). Read
+`README.md` before writing any code — it documents every route, the
+two-identity model, and conflict handling in detail. Read `SECURITY.md`
+before touching anything auth-related — it documents the trust model and
+exactly what is and isn't decided yet.
 
 ---
 
 ## Non-negotiable architecture rules (do not violate these)
 
 1. **No native deps.** No SQLite, no Docker, no Python toolchain, no build
-   step requiring node-gyp. If you're tempted to add a bundler/framework
-   for the frontend, stop — see Session 2 scope below for why vanilla
-   JS is the requirement, not a preference.
+   step requiring node-gyp. Turso's client is pure JS over HTTP — it does
+   not violate this. If you're tempted to add a bundler/framework for the
+   frontend, stop — see Session 2's lane below for why vanilla JS is the
+   requirement, not a preference.
 2. **Two identities, enforced structurally, not just in the UI.** Human
-   routes (`/api/projects/...`) need no token. AI routes (`/api/ai/:id/...`)
-   require `Authorization: Bearer <token>`. The AI Session Roster is
-   read-only for humans and read/write for AI — there is deliberately no
-   human-facing write route for it, and no AI-facing approve route for
-   assignments. **Do not add routes that blur this line.**
+   routes (`/api/projects/...`) need no *project* token. AI routes
+   (`/api/ai/:id/...`) require `Authorization: Bearer <token>`. The AI
+   Session Roster is read-only for humans and read/write for AI — there is
+   deliberately no human-facing write route for it, and no AI-facing
+   approve route for assignments. **Do not add routes that blur this
+   line.** (This rule is about the human/AI split specifically — it does
+   not mean human routes have no auth at all; see `SECURITY.md` for the
+   separate, still-open question of authenticating the human surface
+   itself now that this may run publicly.)
 3. **The Function Assignment Gate is human-only by construction.**
    `POST /assignments/:id/approve` exists only on `humanRouter`. Never wire
    it onto `aiRouter`, even behind a permission check — the whole point is
    that no route exists for an AI token to hit.
 4. **Path safety.** All file reads/writes go through `safeResolve()` in
-   `fileOps.js`. Never bypass it with raw `fs` calls from a route.
+   `fileOps.js`. Never bypass it with raw `fs`/DB calls from a route.
 5. **Optimistic concurrency.** File writes accept `expectedVersion` and
    return `409` on mismatch rather than silently overwriting. Preserve this
-   contract in any new write path.
+   contract in any new write path, including whatever finally resolves
+   Known Failure Signature #4.
+6. **Verify against the real server, not just plausible-looking code.**
+   Every ledger entry below that says "verified" means an actual request
+   was made and an actual response was checked — not "read the code and it
+   looked right." This is binding on every session, not a separate
+   testing lane (see Rule 0 and Lane Assignments — this replaces what used
+   to be a dedicated Session 5). The device-code bug (Session 3's
+   follow-up ledger entry) is the concrete example of why: multiple
+   earlier ledger entries said "verified against a live server," and the
+   claim was true *at the time*, but a later change broke it and nobody
+   re-verified after that change landed. Verification is a snapshot, not
+   a permanent guarantee — re-check after anything adjacent changes, not
+   just once per feature.
 
 ---
 
-## Lane assignments (5 sessions)
+## Rule 0 — Session Start Procedure
 
-Register yourself in the AI Session Roster as soon as you start
-(`POST /api/ai/:projectId/sessions`) with your lane as `function`, and keep
-`currentTask` updated via `PATCH` as you work — this is not optional, it's
-literally what that endpoint is for and it's how the human tracks you on
-mobile.
+Every session, every time you resume work — not just your first message:
+
+1. Read this whole file. Don't assume prior context still holds; other
+   sessions push independently and often.
+2. Pull latest `main` (or re-fetch via the API) and check what's changed
+   since you last looked, including files you're about to edit.
+3. **Check your own Requests inbox first, before any self-directed work.**
+   `GET /api/projects/:id/sessions`, find your own entry, read
+   `taskQueue`. An open request from another session outrank your own
+   backlog — address it first, not after. (This ordering is imported
+   directly from create-bedrock's own Rule 0.5 step 7, added there after a
+   real days-old unresolved cross-session request slipped through; adopting
+   it here before that happens once, not after.)
+4. Check `IDEAS.md` for anything proposed in your lane awaiting human
+   review, and the Known Failure Signatures table below so you don't
+   reintroduce a bug class already found and fixed at least once here.
+5. Register or refresh yourself in the AI Session Roster
+   (`POST /api/ai/:projectId/sessions`) with your lane as `function`, and
+   keep `currentTask` updated via `PATCH` as you work. Not optional — it's
+   how the human tracks five... now four... concurrent sessions from a
+   phone.
+
+---
+
+## Lane assignments (4 sessions)
 
 ### Session 1 — Frontend Core (Workspace + file tree UI)
-Build `frontend/index.html`, base layout, service worker, PWA manifest.
-- File tree browser (`GET /tree`) with expand/collapse
-- File content viewer/editor calling `GET/PUT /content/*`
-- Conflict UI: on `409`, show a diff-aware warning before allowing
-  `force: true` retry — never auto-force
-- Client-side router (`#/project/:id/workspace` etc.) — server already
-  does the SPA fallback in `server.js`, so hash routing or pushState both
-  work; pick one and be consistent
-- Service worker: cache app shell, but `service-worker.js` itself must
-  never be cached (server already sets `no-cache` header for it — don't
-  fight that)
+**Status: shipped** — see Session Ledger. Original scope: `frontend/index.html`,
+base layout, service worker, PWA manifest, file tree browser, conflict UI
+(diff-aware warning on `409`, never auto-force), client-side router.
 
 ### Session 2 — Frontend: Session Roster + Instructions pages
-- AI Session Roster page (Page 2): **read-only view**, poll or manual
-  refresh against `GET /api/projects/:id/sessions`. Do not add any write
-  UI here — there is no backend route for it and there shouldn't be.
-- Instructions & Functionalities page (Page 3): notes editor
-  (`PUT /notes`), functionality list (`POST /functionalities`),
-  assignment proposals list with **Approve/Reject buttons that only a
-  human sees** (`POST /assignments/:id/approve|reject`)
-- Activity timeline component (shared, used across pages):
-  `GET /api/projects/:id/activity`, render `security_alert` entries
-  distinctly (they matter)
-- **Vanilla JS only** — no React/Vue/build step. Keep it framework-free
-  so `npm start` is still the only setup step on a phone. If you need
-  reactivity, hand-roll a tiny observable/pubsub pattern (20-30 lines is
-  enough for this scope).
+**Status: shipped** — see Session Ledger. Original scope: AI Session
+Roster page (read-only, no write UI — there is no backend route for it),
+Instructions & Functionalities page (notes editor, functionality list,
+Approve/Reject buttons that only a human sees), shared activity-timeline
+component. Vanilla JS only, no build step.
+
+Currently also the session mid-decision on Known Failure Signature #4
+(file-content storage: Turso vs filesystem) per the flag left in Session
+3's follow-up ledger entry — that's this lane's call to make, not
+something another session should pick a side on unasked.
 
 ### Session 3 — Project Management UI + onboarding
-- Project creation flow: name/description form → `POST /api/projects`,
-  **display the returned raw token exactly once** with a clear
-  "copy this now, it won't be shown again" warning (mirrors GitHub PAT UX)
-- Project list/switcher (home screen)
-- Token regeneration flow with a confirmation step (old token dies
-  immediately)
-- "Add to Home Screen" onboarding hint / PWA install prompt UX
-- Project deletion with a destructive-action confirmation (irreversible,
-  wipes the whole project folder server-side)
+**Status: shipped** — see Session Ledger. Original scope: project
+creation flow with one-time token reveal, project list/switcher, token
+regeneration with confirmation, PWA install hint, destructive-action
+confirmation on delete.
 
 ### Session 4 — Security & hardening review
-Audit, don't rebuild — the backend patterns are already good. Focus on:
-- Confirm every route that touches `req.params.projectId` validates the
-  project exists before doing filesystem work (spot-check each router)
-- Review `fileOps.js` `safeResolve` against edge cases: symlinks,
-  Windows-style paths if this ever runs cross-platform, null bytes,
-  extremely long paths
-- Rate-limiting / abuse considerations for the AI-facing routes — this is
-  explicitly a local/LAN tool per the README, but sanity-check that
-  assumption holds (e.g., no accidental `0.0.0.0` exposure beyond intent)
-- Verify token comparison stays constant-time (`tokens.js` already uses
-  `timingSafeEqual` — check nothing else compares tokens with `===`)
-- Confirm `.versions.json` and other sidecar files never leak into
-  `buildFileTree()` output (currently filtered by name in `fileOps.js` —
-  make sure new sidecar files, if any, get the same treatment)
-- Write a short `SECURITY.md` documenting the trust model as-is (no cloud
-  auth, device-is-the-boundary) so future sessions don't "fix" it into a
-  cloud auth system by mistake
-
-### Session 5 — Testing, docs, and integration
-- Smoke-test every route in `backend/routes/` against a fresh project
-  (curl scripts are fine, no need for a test framework given project size
-  — but check `package.json` in case someone added one; don't add Jest/etc.
-  unless it's already there)
-- Verify conflict handling end-to-end: two concurrent writes to the same
-  file path produce a real `409`, not a race
-- Verify the Session Roster / Instructions permission boundaries with
-  actual requests: confirm an AI token genuinely gets `404` (route not
-  found) hitting an approve endpoint, not just `403`
-- Cross-check README.md examples against actual route behavior — fix
-  either the docs or the code if they've drifted
-- Final integration pass once Sessions 1-3 land: does the frontend
-  actually round-trip against the real backend, not just against mocked
-  responses each session assumed independently
+**Status: shipped, ongoing** — see Session Ledger. Audit, don't rebuild —
+the backend patterns are already good. Path-safety edge cases, constant-time
+token comparison, rate-limiting/abuse considerations now that this may go
+public (see `SECURITY.md`), and — per Rule 6 — re-verifying earlier
+findings still hold after adjacent code changes, not just checking them
+once.
 
 ---
 
 ## Coordination protocol
 
-- **Before starting any work, every time — not just on your first message
-  in a session — pull the latest `main` and check for anything addressed
-  to you.** That means: `git pull` (or re-fetch the tree via the API),
-  check recent commits/activity since you last looked, and check for any
-  session-requests or `IDEAS.md` entries naming your lane. Another
-  session may have landed something in the time since your last turn —
-  including changes to a file you're about to edit. This is not
-  optional, and it's not just a first-message thing: check again after
-  any human-in-the-loop pause, not just at session start.
-- **Commit and push after every meaningful change**, not in one big
-  batch at the end. Other sessions can only see what's actually pushed —
-  work sitting uncommitted locally is invisible to everyone else and
-  defeats the whole point of a shared, git-connected coordination model.
+- **Rule 0 covers session start. This section covers the rest of the
+  session.**
+- **Commit and push after every meaningful change**, not in one big batch
+  at the end. Other sessions can only see what's actually pushed — work
+  sitting uncommitted locally is invisible to everyone else and defeats
+  the point of a shared, git-connected coordination model.
 - **Use `expectedVersion`** on every write once you've read a file once.
   Don't skip this because it's "probably fine" — that's the exact scenario
-  it exists for with 5 concurrent sessions.
+  it exists for with multiple concurrent sessions.
 - **Need something outside your lane?** Use
   `POST /api/ai/:projectId/sessions/:targetSessionId/requests` to queue it
   for the right session instead of just doing it yourself and causing
@@ -197,32 +238,50 @@ Audit, don't rebuild — the backend patterns are already good. Focus on:
 - **Proposing a new functionality or reassigning scope?** Use
   `POST /instructions/assignments` — it stays `pending` until the human
   approves it in the UI. Don't treat a proposal as approved just because
-  it made sense to you.
-- **Found something important outside your own lane while working?**
-  Don't sit on it and don't silently go fix someone else's file mid-edit
-  either. Drop it in `IDEAS.md` (see that file's own rules — propose
-  only, the human approves) so it's visible and tracked, not lost in a
-  chat transcript only one person read.
-- If you hit a `409` conflict on a shared file (likely `server.js`,
-  `package.json`, or shared frontend CSS), re-read, re-apply your diff on
+  it made sense to you. The same rule applies outside the app to
+  `IDEAS.md`: propose, don't self-approve.
+- **Found something important outside your own lane while working?** Don't
+  sit on it, and don't silently go fix someone else's file mid-edit
+  either. File it in `IDEAS.md` or as a session request so it's visible
+  and tracked, not lost in a chat transcript only one person read.
+- **If you hit a `409` conflict on a shared file** (likely `app.js`,
+  `package.json`, or shared frontend CSS): re-read, re-apply your diff on
   top of the current version, and re-submit. Never `force: true` without
   understanding what you'd be overwriting.
+
+---
+
+## 🐛 Known Failure Signatures (quick lookup)
+
+Bug classes already found in this project — check against this list before
+writing new code in an adjacent area, so a third session doesn't rediscover
+the same thing a third time.
+
+| # | Signature | Root cause | Fix pattern | Found by |
+|---|---|---|---|---|
+| 1 | A route handler that calls an async `store.*` function without `await`, then responds immediately | `store.js` writes go through a lock queue that resolves on a microtask; the HTTP response can fire before the write actually lands | Every `store.*` call in a route handler must be `await`ed, and the handler must be `async` | Session 1 (project creation, pre-Turso) |
+| 2 | `req.params.projectId` (or any route param) used directly in a filesystem/DB path with no validation | Only file *paths within* a project were going through `safeResolve()` — the project identifier itself wasn't | Validate the identifier itself before using it to build any path; throw a typed error, don't silently sanitize-and-continue (silent rewriting gives zero signal that an escape was attempted) | Session 4 (`projectDir()` traversal via DELETE) |
+| 3 | An `async` Express route handler throws/rejects with no `try/catch`, and Express 4 doesn't route that to error middleware automatically | Missing `try/catch` + `next(err)` around `await` calls in a route handler | Every async handler needs its own `try/catch`, or a wrapper that catches and forwards to `next()`. Found independently **twice** — audit any new async route handler for this specifically | Session 4 (device DELETE crash), Session 3 (`routes/projects.js` create/regenerate/delete) |
+| 4 | **[CURRENTLY OPEN]** File *content* storage is implemented twice, disagreeing: `fileOps.js` was rewritten to call `store.run()` against Turso, but the live `store.js` is still the fs-JSON version with no `run()` method | Two sessions' work landed on top of each other mid-decision, before either fully replaced the other | Not a pick-a-line-and-fix-it bug — a real architectural call (Turso table vs. some other approach) that Session 2 is mid-deciding. Don't touch `files.js`/`fileOps.js` without reading Session 3's flag in the Session Ledger first | Session 3, verified live (`store.run is not a function`) |
+| 5 | A storage write fails because the filesystem is read-only (e.g. a serverless environment), and the raw `fs` error surfaces as an opaque 500 | Vercel's deployed bundle is read-only outside `/tmp`; no distinction was made between "bug" and "expected environment limitation" | Catch the specific read-only error codes (`EROFS`/`EACCES`/`ENOENT`/`EPERM` — confirmed via a real read-only mount test, not assumed; deliberately excludes `ENOSPC` so a real full-disk problem doesn't get mislabeled) and throw a typed error the central handler turns into a clean `503` | Session 3 |
+
+---
 
 ## Session Ledger
 
 Running record of what's actually landed, kept up to date by whichever
-session last touched something. Not a task list (that's the Lane
-assignments section above) — this is "what shipped," so a session
-starting cold — or the human checking in from a phone — doesn't have to
-diff commit history to know current state.
+session last touched something. Not a task list (that's Lane Assignments
+above) — this is "what shipped," so a session starting cold — or the human
+checking in from a phone — doesn't have to diff commit history to know
+current state.
 
 ### Session 3 — Project Management UI + onboarding
 **Status: shipped.** `frontend/js/projects.js` + `frontend/css/projects.css`.
 Create/list/switch/regenerate/delete, token-reveal modal (shown once,
 mirrors GitHub PAT UX), destructive-action confirms, PWA install hint.
-Also authored the placeholder `frontend/index.html` (see that file's own
-header comment — Session 1 owns replacing it) purely to unblock the
-SPA-fallback 500 documented in `KNOWN_ISSUES.md`.
+Also authored the placeholder `frontend/index.html` (Session 1 owned
+replacing it) purely to unblock the SPA-fallback 500 documented in
+`KNOWN_ISSUES.md`.
 
 **Follow-up (same session, human-requested): Vercel readiness + storage
 hardening.**
@@ -230,207 +289,189 @@ hardening.**
   `frontend/` → gitignored `public/` at build time) so Vercel's
   zero-config Express detection and static-asset CDN serving both work
   correctly. `frontend/` stays the single source of truth;
-  `backend/server.js` and local `npm start` are untouched. Confirmed
-  against current Vercel docs (not stale assumptions — an earlier draft
-  of this got the `.listen()` requirement wrong and was corrected after
-  checking).
-- **Storage hardening**: `backend/db/store.js` writes (and the
-  module-load-time directory check) now catch read-only-filesystem
-  failures and throw a typed `StorageReadOnlyError` (503, clear
-  message) instead of a raw fs error. `server.js`'s error handler
-  respects a typed error's `statusCode` (additive only — every existing
-  error path, tested, is unchanged). All three write routes in
-  `routes/projects.js` (create/regenerate-token/delete) now properly
-  `try/catch` + `next(err)` instead of letting a rejected promise from
-  an async handler go uncaught (Express 4 doesn't auto-route those to
-  error middleware — `create` had no try/catch at all before this).
-  Verified against a **real** read-only bind mount (not a mock), not
-  just plausible-looking code: confirmed all three routes return a
-  clean 503 instead of a raw 500/hang, confirmed reads still work fine
-  under the same condition, confirmed the server doesn't crash, and
-  confirmed via a full regression suite that normal writable operation
-  and every existing error path (400s) are completely unaffected.
-  Along the way, the first version of this fix only checked for
-  `EROFS`/`EACCES` — a real read-only-mount test in this exact sandbox
-  produced `ENOENT` instead, which the initial check missed entirely.
-  Widened to a shared `isReadOnlyStorageError()` helper covering
-  `EROFS`/`EACCES`/`ENOENT`/`EPERM`, deliberately excluding things like
-  `ENOSPC` (disk full) so a real, different problem on an actual device
-  still surfaces as-is rather than getting mislabeled.
-- **This is a stopgap, not the real fix.** It makes the failure mode
-  honest (a clear 503) instead of silent/confusing — it does not add
-  persistent storage. Session 2 is building that (Turso) as of this
-  writing; this doesn't duplicate or compete with that, and should
-  likely be simplified or removed once real persistent storage lands.
-- Reinforced the coordination-protocol section above (pull latest +
-  check requests every time, not just at session start; commit/push
-  incrementally, not in one batch) per explicit human request.
-- Filed two ideas in `IDEAS.md` rather than building them: the same
-  missing-try/catch pattern found in `routes/projects.js` likely exists
-  in other route files too (didn't audit those — didn't want to touch
-  files another session might have open), and a small note on this
-  stopgap's removal once Turso lands.
-
-### Session 4 — Security & hardening review
-**Status: shipped.** Audited `fileOps.js`/`store.js` path-safety, found
-and fixed the `projectDir()` traversal gap on the DELETE route (see
-`db/store.js` header comment — confirmed via isolated PoC, not
-theoretical). Confirmed token comparison is constant-time throughout.
-
-### Session 5 — Testing, docs, and integration
-**Status: shipped.** Full route smoke test (`SESSION5_TEST_REPORT.md`),
-conflict-detection end-to-end verification, confirmed the AI→approve
-permission boundary genuinely 404s rather than 403s. Two low-priority
-findings logged (README gap, non-encoded traversal not logged — both
-expected behavior, not bugs).
-
-### Session 2 — Session Roster + Instructions pages
-**Status: shipped.** `frontend/js/roster.js`, `frontend/js/instructions.js`,
-`frontend/js/activity.js` (shared component), `frontend/css/instructions-roster.css`.
-
-- Roster: strictly read-only per spec, no write UI added to compensate
-  for the backend having none. Sessions sorted active-first, stale
-  (>10min silent) pushed down. Nested task-queue rendering with
-  priority badges.
-- Instructions: debounced notes autosave, functionality list, and the
-  Function Assignment Gate — Approve/Reject buttons exist *only* on
-  this page and call *only* the human-facing routes. No client-side
-  permission check added on top, because the backend route boundary
-  (approve doesn't exist on `aiRouter` at all) already is the
-  boundary — duplicating it client-side would just be more surface
-  area to keep in sync.
-- Activity timeline: shared across pages, `security_alert` entries
-  rendered distinctly (icon + tag + red surface) so a human skimming
-  a long feed doesn't have to read every row to notice one. Polling
-  pauses on `document.hidden`, resumes + refreshes on return.
-
-Verified against a live local server (not just written): seeded real
-sessions/requests/assignments through actual API calls, triggered a
-genuine `security_alert` via an actual encoded-traversal attempt,
-clicked the real Approve button and confirmed via separate `curl` that
-the write persisted and got logged — not just that the DOM updated.
-
-Still open from Session 2's original scope: none. Lane complete.
-
-**Follow-up (same session, human-requested):**
-- Added this ledger.
-- Added `IDEAS.md` (repo root) — a proposal board outside the app
-  itself. Any session can add an idea; only the human marks one
-  `**APPROVED**`/`**REJECTED**`; nobody self-approves. Mirrors the
-  Function Assignment Gate pattern but as a plain file, not a route.
-- Fixed Session 5's Finding 2 (`README.md` "Security notes"): the
-  `security_alert` logging guarantee was stated more broadly than it
-  actually behaves. Clarified that it applies to requests reaching
-  the route handler — Express normalizes a raw non-encoded `../`
-  before `safeResolve()` ever runs, so those fall through to the SPA
-  shell unlogged (never a real vulnerability, since no file outside
-  the workspace is touched either way; just previously-imprecise
-  docs). Went with Session 5's own recommended option 1
-  (docs-clarify) over option 2 (new middleware) — read the actual
-  route/middleware chain myself and agree with Session 5's reasoning
-  that a raw-`..` interceptor is unneeded complexity for a
-  local-only tool where the real caller (an AI agent) always sends
-  encoded paths anyway.
-- Re-read every backend file end to end before touching anything,
-  specifically to avoid manufacturing work. Finding 1 was already
-  fixed by Session 5. Finding 2 (above) is now closed. No other bug
-  found — backend genuinely is in the state Sessions 4 and 5
-  reported.
+  `backend/server.js` and local `npm start` are untouched.
+- **Storage hardening** (Known Failure Signature #5): typed
+  `StorageReadOnlyError` (503) instead of a raw fs error, central error
+  handler respects a typed error's `statusCode` (additive only, every
+  existing error path unaffected), all three write routes in
+  `routes/projects.js` properly `try/catch` + `next(err)` (Known Failure
+  Signature #3 — `create` had no try/catch at all before this). Verified
+  against a real read-only bind mount, not a mock.
+- **This is a stopgap, not the real fix** — it makes the failure mode
+  honest, it doesn't add persistent storage. Should likely be simplified
+  or removed once Known Failure Signature #4 is actually resolved.
+- Filed two ideas in `IDEAS.md` rather than building them unasked: audit
+  other route files for the same try/catch gap, and remove this stopgap
+  once Turso file storage lands.
 
 **Follow-up (same session, human-requested): fixed broken project
 creation.**
 **Status: shipped.** `POST /api/projects` was throwing a 500 on every
 call — `generateDeviceCode` was referenced throughout `store.js`/
-`routes/projects.js`/`routes/device.js` as part of the device-identity
-feature but was never actually implemented in `utils/tokens.js`, and
-`generateToken()` ignored the `deviceCode` argument being passed to
-it. Found by actually running `POST /api/projects`, not by reading
-code — worth noting since the ledger had several "verified against a
-live server" entries above this one, and this bug still slipped
-through, because verification happened before this particular feature
-landed on top.
+`routes/projects.js`/`routes/device.js` but never actually implemented in
+`utils/tokens.js`, and `generateToken()` ignored the `deviceCode` argument
+being passed to it. Found by actually running the endpoint, not by
+reading code — worth noting since several ledger entries above this one
+say "verified against a live server," and this bug still slipped through
+because it landed *after* that verification happened (see Rule 6 on why
+verification is a snapshot, not a permanent guarantee).
 
-Added `generateDeviceCode()` and made `generateToken(deviceCode)`
-actually embed it (`aihub_<12-char code>_<random>`, falls back to the
-original shape if no deviceCode is passed, so nothing breaks for a
-call site that doesn't have one). Verified live: project creation
-works, a second project on the same device gets the *same* deviceCode
-(confirmed stable, not just present), regenerate-token uses the same
-path correctly, new-format tokens still authenticate fine against
-`verifyToken`.
+Added `generateDeviceCode()`, made `generateToken(deviceCode)` actually
+embed it (`aihub_<12-char code>_<random>`, falls back to the original
+shape if no deviceCode is passed). Verified live: project creation works,
+a second project on the same device gets the *same* deviceCode, regenerate
+uses the same path, new-format tokens authenticate fine.
 
-**Found but deliberately NOT touched — flagging for Session 2, who's
-already working this as of this entry:** `fileOps.js` has been fully
-rewritten to store file *content* in Turso (`store.run()` against an
-`aisapp_files` table) — but the currently-active `store.js` is still
-the fs-JSON version with no `run()` method, so every file
-read/write/delete is broken right now (`GET
-/api/ai/:id/files/tree` → `store.run is not a function`, confirmed
-live, not assumed). This also directly contradicts `store.turso.js`'s
-own header comment, which says file-content storage was deliberately
-left **out of scope** of that migration ("a separate, undecided
-question"). Two parts of the codebase currently disagree about where
-file content lives, and neither is fully working as a result. Not a
-one-right-answer bugfix like the device-code one above — a real
-architectural call, so leaving it for whoever's already mid-decision
-rather than picking a side unasked.
+**Found but deliberately not touched — Known Failure Signature #4 above.**
+Flagged for Session 2, who was already mid-decision on this as of this
+entry. Not a one-right-answer fix like the device-code bug — a real
+architectural call, left for whoever's already deciding rather than
+picking a side unasked.
+
+### Session 4 — Security & hardening review
+**Status: shipped, ongoing.** Audited `fileOps.js`/`store.js` path-safety,
+found and fixed the `projectDir()` traversal gap (Known Failure Signature
+#2) via isolated PoC, not theoretical. Confirmed token comparison is
+constant-time throughout.
+
+**Follow-up (same session, human-requested): permanent device identity +
+rate limiting.** Built the 12-char device-code system (later needed the
+Session 3 fix above to actually work). Built `db/schema.sql` +
+`db/store.turso.js` as unverified reference groundwork — explicitly NOT
+this lane's deliverable, explicitly not live-verified (no network egress
+to `*.turso.io` in this sandbox), explicitly flagged for Session 2 to
+verify independently rather than trust as-is.
+
+Found a live crash bug while doing this: the device DELETE route called a
+non-existent store function with no try/catch around its async body,
+crashing the whole process on that request (Known Failure Signature #3,
+found independently a second time). Fixed.
+
+Added four-tier rate limiting once the human confirmed this app is moving
+toward a public Vercel deployment, and wrote `SECURITY.md` documenting the
+trust model. **The rate limiting landed on top of the Turso migration and
+was partially lost in that merge — found and restored in a later pass,
+same session.** `SECURITY.md` is explicit that rate limiting slows abuse
+of the human-route auth gap, it does not close it — real authentication
+there is flagged as an open, undecided architectural question, not solved
+by anything in this pass.
+
+### Session 2 — Session Roster + Instructions pages
+**Status: shipped.** `frontend/js/roster.js`, `frontend/js/instructions.js`,
+`frontend/js/activity.js` (shared component), `frontend/css/instructions-roster.css`.
+
+- Roster: strictly read-only per spec. Sessions sorted active-first, stale
+  (>10min silent) pushed down. Nested task-queue rendering with priority
+  badges.
+- Instructions: debounced notes autosave, functionality list, the Function
+  Assignment Gate (Approve/Reject exist only on this page, call only the
+  human-facing routes — no client-side permission check added on top,
+  since the backend route boundary already is the boundary).
+- Activity timeline: shared, `security_alert` entries rendered distinctly.
+  Polling pauses on `document.hidden`, resumes + refreshes on return.
+
+Verified against a live local server: seeded real sessions/requests/
+assignments through actual API calls, triggered a genuine `security_alert`
+via an actual encoded-traversal attempt, clicked the real Approve button
+and confirmed via separate `curl` that the write persisted and got
+logged — not just that the DOM updated.
+
+**Follow-up (same session, human-requested):**
+- Added the Session Ledger pattern and `IDEAS.md`.
+- Fixed a README precision gap on `security_alert` logging scope
+  (clarified it applies to requests that reach `safeResolve()` — a raw
+  non-encoded `../` gets normalized by Express before that point, so it
+  falls through to the SPA shell unlogged; never a real vulnerability
+  either way, since no file outside the workspace is touched regardless).
+- Re-read every backend file end to end before touching anything,
+  specifically to avoid manufacturing work.
 
 ### Session 1 — Frontend Core (Workspace + file tree UI)
 **Status: shipped.** `frontend/index.html` (real app shell, replacing
 Session 3's unblock-only placeholder), `frontend/js/router.js`,
 `frontend/js/theme.js`, `frontend/js/pages/workspace.js`,
 `frontend/css/base.css`, `frontend/css/workspace.css`,
-`frontend/manifest.json`, `frontend/service-worker.js`,
-`frontend/icons/`.
+`frontend/manifest.json`, `frontend/service-worker.js`, `frontend/icons/`.
 
 - `base.css` extends Session 3's `--aihub-*` tokens (dark values copied
-  verbatim, unchanged) with a `[data-theme="light"]` variant and the
-  app-shell layout (sticky header, bottom tab bar, safe-area-inset
-  aware for notched phones).
-- Router is hash-based (`#/project/:id/workspace|roster|instructions`),
-  wires `projectselected` to navigation, and mounts Session 2's
-  `SessionRoster`/`InstructionsPage` modules directly via their
-  documented `init(mountEl, projectId)` contract -- including calling
-  their returned `.destroy()` on every navigation away, so their
-  polling timers don't leak when switching tabs or projects.
-  `InstructionsPage.init()` is async; the router guards against
-  mounting a stale controller if the user navigates away again before
-  it resolves.
-- Workspace: file tree, editor (deliberately no line-wrap so the
-  gutter's line numbers stay correctly aligned to the textarea's
-  actual rows -- wrapping would desync them without a much heavier
-  editor component), download, delete, new-file creation.
-- Conflict UI verified against a real `409` from the live server (not
-  a mocked assumption, per Session 5's ask in the lane notes below):
-  fetches the current server content and renders an actual LCS
-  line-diff (capped at 2000 lines/side to avoid hanging the tab on
-  something huge), not just a version-number message. Never
-  force-writes automatically -- the human chooses keep-mine or
-  use-theirs.
-- Icons: pure-Node/zlib PNG generation, no native image libraries
-  (canvas/sharp need a native compile step this project avoids
-  everywhere else). Circular badge + ring/dot motif, built as an
-  original composition in response to style direction the human gave
-  on a reference image, not traced from it.
-- Fixed Finding 1 from Session 5's report was already closed by
-  Session 5 themselves; independently also found and fixed the same
-  README Finding 2 wording (traversal-logging scope) Session 2 later
-  fixed too -- both landed as parallel commits, merged by
-  synthesizing one version from both rather than picking a side, since
-  neither was wrong, just independently duplicated.
+  verbatim) with a `[data-theme="light"]` variant and the app-shell layout
+  (sticky header, bottom tab bar, safe-area-inset aware).
+- Router is hash-based, wires `projectselected` to navigation, mounts
+  Session 2's `SessionRoster`/`InstructionsPage` modules via their
+  documented `init(mountEl, projectId)` contract, including calling their
+  returned `.destroy()` on every navigation away so polling timers don't
+  leak. `InstructionsPage.init()` is async; the router guards against
+  mounting a stale controller if the user navigates away again before it
+  resolves.
+- Workspace: file tree, editor (deliberately no line-wrap so the gutter's
+  line numbers stay aligned to the textarea's actual rows), download,
+  delete, new-file creation.
+- Conflict UI verified against a real `409` from the live server: fetches
+  the current server content and renders an actual LCS line-diff (capped
+  at 2000 lines/side), not just a version-number message. Never
+  force-writes automatically.
+- Icons: pure-Node/zlib PNG generation, no native image libraries.
+- Independently found and fixed the same README wording gap Session 2
+  fixed — both landed as parallel commits on the same real issue, merged
+  by synthesizing one version rather than picking a side, since neither
+  was wrong, just duplicated.
 
-Verified end-to-end against the real backend before pushing: static
-asset serving, project creation, file tree/read/write, the conflict
-flow above, and registering as `session-1` in a local test project's
-roster while developing (not committed -- `projects/` is gitignored).
+Verified end-to-end against the real backend before pushing: static asset
+serving, project creation, file tree/read/write, the conflict flow above,
+and registering as `session-1` in a local test project's roster while
+developing (not committed — `projects/` is gitignored).
 
----
+### Session 5 — Testing, docs, and integration *(historical — lane retired)*
+**Status: shipped, lane closed.** Full route smoke test
+(`SESSION5_TEST_REPORT.md`), conflict-detection end-to-end verification,
+confirmed the AI→approve permission boundary genuinely 404s rather than
+403s. Two low-priority findings logged (README gap, non-encoded traversal
+not logged — both expected behavior, not bugs). This work is real and
+kept as historical record; going forward, verification is Rule 6, binding
+on all sessions, not a dedicated fifth lane — see this file's own
+restructure note at the top.
 
 ---
 
 ## Definition of done for the whole project
 
 `npm install && npm start` on a bare Termux install produces a working PWA
-that a human can install to their home screen, create a project in, copy an
-AI token from, and have all 5 of these lanes' worth of functionality work
-against that token — with zero native compilation and zero cloud dependency.
+that a human can install to their home screen, create a project in, copy
+an AI token from, and have all four lanes' worth of functionality work
+against that token — with zero native compilation and zero cloud
+dependency for local use. For the public Vercel path specifically, add:
+file content storage actually working (Known Failure Signature #4
+resolved) and real authentication on human-facing routes (the open
+question in `SECURITY.md` actually decided and built, not just
+documented).
+
+---
+
+## Maintaining this file
+
+Update this file when:
+
+- A new route is added or a route's contract changes — update the file
+  tree status table and, if it changes a Non-Negotiable Rule, that section
+  too.
+- A lane's scope changes, a lane ships, or (as happened this session) a
+  lane is retired — update both Lane Assignments and add a Session Ledger
+  entry. Don't let a "Status" line go stale; a session starting cold
+  trusts it.
+- A bug class shows up a second time — add it to Known Failure Signatures
+  (or note the second occurrence against the existing row, as Known
+  Failure Signature #3 does). If it shows up a third time, that's a sign
+  it needs to become a Non-Negotiable Rule, not just a table row.
+- A session finds something that blocks another session's in-progress
+  work — flag it high-visibility in that session's Lane Assignment entry
+  and the Session Ledger, the way Known Failure Signature #4 is flagged
+  here, not just mentioned once in a commit message.
+- Anything in `SECURITY.md` changes — this file's Current State summary
+  of the open gap should stay a one-line pointer to that file, not a
+  second copy that can drift out of sync with it.
+
+Do not let this file silently drift out of sync with reality — an
+instructions file that lies about the project's state is worse than no
+instructions file. If in doubt, `git log` against the prior commit to
+confirm exactly what actually changed before writing a ledger entry about
+it.
