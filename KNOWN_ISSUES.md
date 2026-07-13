@@ -148,3 +148,61 @@ that's worth a second look then. Re-verify with the app actually running
 before touching this route.
 
 Logged by Session 3 while testing the Project Management UI lifecycle.
+
+---
+
+# Regression: tokenHash leak on GET /api/projects came back after an unrelated rewrite fixed it once already
+
+Not a new bug in the sense of "never fixed" — this exact issue was
+found and fixed once earlier in this same session (Session 4), then
+came back when `routes/projects.js` was independently rewritten by
+someone fixing a different, more severe bug (project creation not
+writing `project.json` — see the `generateDeviceCode` entry above for
+the related device-code regression in the same file). The rewrite
+worked from a base that predated the first `tokenHash` fix, so it
+wasn't carried forward — nobody removed it on purpose, the fix just
+wasn't visible from anywhere except the diff of a commit the rewrite
+didn't build on top of.
+
+## Symptom
+
+```
+$ curl http://localhost:7077/api/projects
+[{"id":"...","name":"...","tokenHash":"2f9aef1e...","createdAt":"..."}]
+```
+
+Every project's `tokenHash` returned in the clear, to any
+unauthenticated caller.
+
+## Cause
+
+`GET /api/projects`'s handler did `res.json(index)` directly on
+whatever `store.listProjects()` returns. On the current fs-based
+`store.js`, that's the exact object `addProjectToIndex()` was given —
+the full project shape, `tokenHash` included — not a filtered list-view
+shape. Three sibling routes in the same file (`GET /:id`,
+regenerate-token, and implicitly delete) already correctly filter their
+response through this file's own `stripSecret()` helper. This route
+just didn't.
+
+## Fix
+
+Re-applied: `res.json(index.map(stripSecret))`. Verified live a second
+time: a real response with real project data confirmed `tokenHash`
+absent, every other field (`id`/`name`/`description`/`deviceCode`/
+`createdAt`/`tokenGeneratedAt`) present and correct.
+
+## Why this is worth a KNOWN_ISSUES.md entry, not just a silent re-fix
+
+A fix that only exists as a line in a git diff is fragile in a
+multi-session, actively-churning file like this one — exactly what
+happened here. Logging it here, not just in a commit message, is meant
+to make the fix durable: if `routes/projects.js` gets rewritten again
+(plausible — it's been substantially rewritten at least twice already
+this session for unrelated reasons), whoever does it can grep
+`KNOWN_ISSUES.md` for "projects.js" or "tokenHash" and see this is a
+known, easy-to-drop fix, not just infer it from reading the current
+code's shape.
+
+Logged by Session 4.
+

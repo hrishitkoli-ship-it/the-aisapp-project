@@ -112,10 +112,21 @@ router.post('/', async (req, res, next) => {
 });
 
 // GET /api/projects - list all projects (no secrets included).
+//
+// REGRESSION FIX (Session 4, 2nd occurrence -- see KNOWN_ISSUES.md for
+// the full writeup): this exact leak (tokenHash returned in the clear
+// to any unauthenticated caller) was found and fixed once already this
+// session, then came back when this file was independently rewritten
+// to fix the separate project.json/removeProjectDir bugs, working from
+// a base that predated the first fix. Re-applying here. See
+// KNOWN_ISSUES.md for why this is being logged there too this time,
+// not just fixed silently -- a fix that isn't visible outside the diff
+// itself is exactly the kind of thing that's easy to lose again in the
+// next rewrite of this same actively-churning file.
 router.get('/', async (req, res, next) => {
   try {
     const index = await store.listProjects();
-    res.json(index);
+    res.json(index.map(stripSecret));
   } catch (err) {
     next(err);
   }
