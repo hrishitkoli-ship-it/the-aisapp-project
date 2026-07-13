@@ -8,20 +8,23 @@
  * "Function Assignment Gate" from the spec -- an AI (or the human)
  * can PROPOSE "assign function X to session Y", which is stored with
  * status: 'pending', but the assignment's `approved` flag can only be
- * flipped true by a human-authenticated request. AI-authenticated
- * requests to the approve endpoint are rejected with 403, even if
- * they present a perfectly valid token -- a valid AI token proves
- * "this is an AI I trust to read/write project data", not "this AI is
- * authorized to approve its own assignments", which would defeat the
- * entire point of a human-in-the-loop gate.
+ * flipped true by a human-authenticated request. There is no
+ * AI-facing approve/reject route at all (verified live: an AI token
+ * hitting the approve path gets a 404, not a 403 -- the route
+ * structurally doesn't exist on aiRouter, rather than existing and
+ * rejecting on a permission check that a bug could someday bypass).
  *
- * CHANGED: store.getInstructions() is now async (Postgres-backed).
- * Every call site below got `await` + the enclosing handler marked
- * `async` with a try/catch -> next(err). The approval-gate LOGIC
- * itself (lines that decide `approved`, which router something is
- * mounted on) is untouched -- this file's security property doesn't
- * depend on sync vs async, only on aiRouter never mounting an
- * approve/reject route, which remains true here exactly as before.
+ * CORRECTION (found live, not assumed -- see KNOWN_ISSUES.md /
+ * Known Failure Signature #6): a prior version of this comment also
+ * claimed "Postgres-backed" -- never true, store.js is still the
+ * original fs-based datastore. Every function this file calls
+ * genuinely exists there, so this never caused a functional bug --
+ * verified live end-to-end: notes update, an AI functionality
+ * proposal, an AI assignment proposal, the AI-side approve 404 above,
+ * and confirming the human approval actually persists
+ * (approved: true). This file's security property never depended on
+ * sync vs async, only on aiRouter never mounting an approve/reject
+ * route, which remains true exactly as before.
  * ------------------------------------------------------------------
  */
 
