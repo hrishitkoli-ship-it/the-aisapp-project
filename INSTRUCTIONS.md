@@ -26,10 +26,21 @@ follows) coordinates that project's five sessions.
 > (its own Rule 6, no dedicated testing session either). Lane assignments
 > below are now "(4 sessions)."
 >
-> **Still true and still the most urgent thing in this file:** file
-> *content* storage is currently broken in production. See Known Failure
-> Signature #4 and the Session 3 ledger entry below before touching
-> anything under `backend/routes/files.js` or `backend/utils/fileOps.js`.
+> **Update (Session 3, covering Session 5's retired scope): Known Failure
+> Signature #4 looks resolved, but isn't fully confirmed.** `store.js` is
+> now genuinely Turso-backed (`@tursodatabase/serverless`) and exports
+> `run()` — `fileOps.js`'s calls to it are confirmed compatible: matching
+> signature (`run(sql, args)`), matching return shape (`result.rows[...]`),
+> cross-checked against every call site. The app also boots cleanly with
+> real (if placeholder) `TURSO_DATABASE_URL`/`TURSO_AUTH_TOKEN` set — every
+> route file requires without error. **What's NOT verified: an actual
+> live query against a real Turso database.** This sandbox's network
+> egress is blocked from reaching turso.io, same constraint store.js's
+> own header comment already discloses for its author. Whoever has real
+> Turso credentials should do the thing that comment asks for — create a
+> project through the UI, reload the page, confirm it's still there —
+> before this gets marked resolved for real. Full details in the Session
+> 3 ledger entry below.
 
 ---
 
@@ -389,6 +400,43 @@ Added Known Failure Signatures #6 and #7 above — the pattern here
 unrelated call because it was written against stale assumptions about
 the datastore) is distinct from #3/#4 and worth its own entries so a
 future rewrite of this file checks for it explicitly.
+
+**Follow-up (same session): the real Turso migration landed since the
+entry above.** `store.js` genuinely imports `@tursodatabase/serverless`
+now (not assumed-but-actually-fs, this time it's real) — confirmed via
+its own header comment plus a real `require()` throwing exactly the
+documented "TURSO_DATABASE_URL and TURSO_AUTH_TOKEN must be set" error
+without them. This also means a claim in this same session's chat
+transcript ("nothing will use these env vars yet") is now stale as of
+this migration — worth knowing if referring back to that conversation,
+since the app no longer boots at all without them.
+
+`routes/projects.js` was rewritten again to match (this is genuinely
+correct this time, unlike the two prior "assumed Postgres/Turso"
+rewrites) — cross-checked every store call in `projects.js`, `sessions.js`,
+`instructions.js`, `activity.js`, and `device.js` against the new export
+list; all resolve. `device.js`'s header comment mentions the old
+`store.projectDir()` call — checked whether that's live code or just
+describing history: confirmed it's only in a comment (the actual delete
+cascade correctly uses `removeProjectFromIndex`), so this was a false
+alarm caught by checking rather than just flagging on a grep match.
+
+Found and fixed one real (if minor) issue: `routes/projects.js`'s delete
+handler had an inline comment claiming FK cascade handles cleanup,
+directly contradicting both the file's own header comment two lines
+above and `store.js`'s actual `removeProjectFromIndex` (which explicitly
+does NOT rely on cascade, and says why). Corrected to match reality.
+
+**KFS #4 status — see the updated note at the top of this file.**
+Confirmed `fileOps.js`'s `store.run()` calls are interface-compatible
+with the real `run(sql, args)` now exported (signature and return shape
+both checked against actual call sites, not just that the name exists).
+Confirmed the whole app boots cleanly with placeholder Turso credentials
+-- every route file requires without error. **Could not verify an
+actual live query** -- this sandbox can't reach turso.io, matching the
+exact limitation store.js's own author already disclosed. This needs a
+real "create a project, reload, confirm it persisted" check from
+whoever has real credentials before it's fully confirmed fixed.
 
 ### Session 4 — Security & hardening review
 **Status: shipped, ongoing.** Audited `fileOps.js`/`store.js` path-safety,
