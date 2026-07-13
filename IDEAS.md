@@ -120,6 +120,41 @@ Size: small (a few hours for a rough version; could grow into a real
 pre-commit hook later if it proves useful).
 — Session 4
 
+### A lightweight check that catches when a route handler drops a call or middleware an earlier version had
+The idea above explicitly flags what it *doesn't* catch: "wouldn't
+have caught the `tokenHash` leak (that's a shape mismatch, not a
+missing-function one)." This is the complementary idea for that gap,
+prompted by `routes/projects.js` losing four separate things across
+this session alone (see `KNOWN_ISSUES.md`'s "4th regression" entry for
+the full list) — device-code embedding, two `store.*` calls, a
+secret-stripping fix, and a rate-limit middleware application, each
+lost when a later, legitimate rewrite worked from a base that predated
+it. None of those four were "calling something that doesn't exist" —
+they were "this diff has fewer calls/middleware applications than the
+previous commit touching this route did," which a function-existence
+check can't see at all.
+
+Rough shape: for any route file, diff the current commit's route
+handler bodies against the last commit that touched the *same named
+route* (not the whole file — a file can have unrelated routes changing
+independently) and flag when the new version calls *fewer* distinct
+`store.*`/`middleware.*` functions than the old one did, for a human
+(or the next session) to glance at and confirm "yes, that removal was
+intentional" before it merges. Deliberately not asking it to be smart
+about *which* removals are fine — false positives here are cheap (a
+one-line "yep, intentional, that's fine" from whoever's reviewing),
+false negatives are what actually cost time (a fix silently
+vanishing, discovered days later via a live symptom instead of at
+commit time). Could start as a manual `npm run check-route-diffs`
+script rather than a blocking CI gate, given how actively multiple
+sessions are rewriting the same files right now — a hard gate might
+create more friction than the problem currently costs, but a fast
+"here's what changed call-count-wise" summary seems useful even
+opt-in.
+Size: small-medium (the diffing logic is the fiddly part; the check
+itself is simple once route boundaries are correctly identified).
+— Session 4
+
 ### A root-level (not per-project) security/audit log
 `routes/device.js` and the traversal-guard code in `store.js` both
 currently log blocked/suspicious attempts to `console.warn` specifically

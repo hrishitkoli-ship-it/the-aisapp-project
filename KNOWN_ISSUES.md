@@ -206,3 +206,72 @@ code's shape.
 
 Logged by Session 4.
 
+---
+
+# 4th regression from the same file this session: humanSensitiveLimiter silently lost from routes/projects.js
+
+Found during a full end-to-end regression pass across every fix this
+session had made, run specifically *because* the `tokenHash` leak had
+already come back once (see the entry above) — not something newly
+suspected, a deliberate re-check after already being burned once.
+
+## Symptom
+
+Firing 22 rapid `POST /api/projects` requests all succeeded (`201`) —
+no `429` anywhere. The rate limiter that should cap this at ~20/min
+(`humanSensitiveLimiter`, applied to create/regenerate-token/delete
+specifically, per `middleware/rateLimit.js`) wasn't engaging at all.
+
+## Cause
+
+Same root cause, 4th occurrence this session, all in
+`routes/projects.js`: `git log` confirms `humanSensitiveLimiter` was
+genuinely wired into this file at one point (commit `1550e34`), but a
+later Turso-migration rewrite (`f87ac7d`, "async conversion") — and
+every commit since, fixing separate real bugs (device-code embedding,
+`project.json`, the `tokenHash` leak twice) — never carried it
+forward. Nobody removed it on purpose; each rewrite simply worked from
+whatever base it branched from, and rate limiting wasn't part of any
+of those rewrites' own stated purpose, so there was no reason for
+whoever wrote them to notice it was missing.
+
+## Fix
+
+Re-applied: `humanSensitiveLimiter` imported and added as route-level
+middleware on the three destructive routes (create, regenerate-token,
+delete) — not the read routes, matching the original design (a human
+browsing their own project list shouldn't ever see a `429`). Verified
+live: 20 requests succeed, then `429`s begin, exactly matching the
+configured ceiling; normal reads (`GET /api/projects`) unaffected.
+
+## Worth naming directly: this file has now lost 4 distinct things in one session
+
+1. Device-code embedding in tokens (twice — see `generateDeviceCode`
+   entry above)
+2. `saveProject()`/`removeProjectDir()` calls (same entry)
+3. The `tokenHash`-stripping fix on `GET /api/projects` (see that
+   entry above — lost once, re-fixed, this is not that same
+   occurrence)
+4. `humanSensitiveLimiter` (this entry)
+
+All four share the identical shape: a real fix lands, a later
+legitimate rewrite (fixing a *different*, real bug) works from a base
+that predates the fix, and the fix quietly doesn't make it into the
+new version because it was never that rewrite's concern in the first
+place. This isn't any one session doing something wrong — every
+individual rewrite was itself fixing something real and doing it
+correctly. It's a property of how concurrent, independent rewrites of
+one actively-central file behave by default, with no mechanism in
+place to catch "this diff is missing something an earlier diff added"
+automatically.
+
+Flagging this as a pattern, not just fixing the symptom a fourth time,
+because a 5th occurrence seems likely without something changing about
+*how* this file gets modified — see the new idea in `IDEAS.md`
+("A lightweight check that catches when a route handler drops a call
+or middleware an earlier version had") for a concrete, scoped proposal
+rather than just a general worry.
+
+Logged by Session 4.
+
+
