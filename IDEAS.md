@@ -98,6 +98,70 @@ Flagging as an idea rather than building it, since it touches the
 Size: medium (new route + auth-boundary decision, not just UI).
 — Session 2
 
+### A lightweight "does this route match what store.js actually returns" check, run in CI or pre-commit
+This session hit the same root cause three separate times in one file
+(`routes/projects.js`): code written against a comment's description of
+`store.js` rather than `store.js` itself, twice for Turso-schema
+assumptions (KFS #4, #6) and once for a silently-dropped call after a
+rewrite (KFS #7, #9). All three were only caught by actually running
+the real server and hitting the real endpoint — nothing in the code
+itself would fail a lint or a type check, since JS doesn't statically
+verify that a comment's claims match reality. A small script (even
+just: import every `routes/*.js` file, extract every `store.<name>`
+call via regex, confirm `<name>` exists on the real `store.js` export
+object) wouldn't catch a *behavioral* mismatch, but would catch the
+"calling a function that doesn't exist" flavor of this bug (which is
+most of what actually happened) before it needs a live server to
+surface. Wouldn't have caught the `tokenHash` leak (that's a shape
+mismatch, not a missing-function one) but would've caught the
+`generateDeviceCode`-undefined crash and the `store.run()` calls in
+`fileOps.js` instantly, for free, on every commit.
+Size: small (a few hours for a rough version; could grow into a real
+pre-commit hook later if it proves useful).
+— Session 4
+
+### A root-level (not per-project) security/audit log
+`routes/device.js` and the traversal-guard code in `store.js` both
+currently log blocked/suspicious attempts to `console.warn` specifically
+*because* there's no safe per-project place to log them when the
+attempted attack IS the project identifier itself — logging into a
+project's own `activity.json` using an attacker-controlled ID as the
+key is exactly the kind of self-referential trap that would be ironic
+to introduce while fixing a path-traversal bug. This was noted as a
+known gap when Session 4 first found the traversal issue, and it's
+still true: right now, anyone tailing server logs sees these, but
+there's no in-app view of "security-relevant events across every
+project," which matters more once this is public (SECURITY.md §3b) and
+a human can't realistically watch raw process logs on a serverless
+deployment the way they could on a local Termux session. Once real
+storage lands (Turso or otherwise, per KFS #4), a small `security_log`
+table with no `project_id` foreign key requirement (so it can log
+against an ID that was never valid) would let this become a real,
+human-visible thing instead of console output nobody's watching.
+Size: medium (needs the storage question settled first — this is a
+"once Turso lands" idea, not a "do this now" one).
+— Session 4
+
+### Consider whether GET /api/projects should exist at all once real human-route auth lands
+Directly related to the `tokenHash` leak (KFS #9) this session found
+and fixed (twice — see KNOWN_ISSUES.md): the deeper reason that leak
+was possible at all is that `GET /api/projects` has no authentication
+of any kind, by original design (`SECURITY.md` §1) — "no cloud auth,
+device is the boundary." Once real authentication on human-facing
+routes actually lands (`SECURITY.md` §3b, still an open, undecided
+question as of this writing), it's worth revisiting whether this
+specific route needs anything beyond "don't leak secrets in the
+response" — e.g., should listing *all* projects on a device require
+the same auth as creating/deleting one, or is read-access intentionally
+more open? Not urgent (the leak itself is fixed regardless of how this
+question resolves), but worth deciding deliberately rather than by
+default once the bigger auth question is actually being designed,
+since "what does GET /api/projects need" is a concrete sub-question of
+that bigger one, not a separate concern.
+Size: small (a design decision, not new code, once the bigger auth
+question is being actively worked).
+— Session 4
+
 ---
 
 ## In progress
