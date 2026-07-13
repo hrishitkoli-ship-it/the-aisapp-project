@@ -168,11 +168,13 @@
     const copyBtn = h(
       'button',
       {
-        class: 'aihub-btn aihub-btn--primary',
+        class: 'aihub-btn aihub-btn--primary aihub-icon-row',
         onclick: async () => {
           try {
             await navigator.clipboard.writeText(token);
-            copyBtn.textContent = 'Copied ✓';
+            copyBtn.innerHTML = '';
+            copyBtn.appendChild(window.AihubIcons.el('check', { size: 15 }));
+            copyBtn.appendChild(document.createTextNode('Copied'));
             setTimeout(() => (copyBtn.textContent = 'Copy token'), 2000);
           } catch {
             // Clipboard API can fail (permissions, insecure context on
@@ -386,7 +388,7 @@
           onRegenerate(project);
         },
       },
-      '⟳'
+      window.AihubIcons.el('refresh', { size: 16 })
     );
 
     const deleteBtn = h(
@@ -400,7 +402,7 @@
           onDelete(project);
         },
       },
-      '🗑'
+      window.AihubIcons.el('trash', { size: 16 })
     );
 
     return h('div', { class: 'aihub-project-row' }, [selectBtn, regenBtn, deleteBtn]);
@@ -492,7 +494,7 @@
         h(
           'button',
           {
-            class: 'aihub-btn aihub-btn--subtle',
+            class: 'aihub-btn aihub-btn--subtle aihub-icon-row',
             onclick: async () => {
               if (!deferredInstallPrompt) return;
               deferredInstallPrompt.prompt();
@@ -501,7 +503,7 @@
               hint.remove();
             },
           },
-          '📲 Install this app'
+          [window.AihubIcons.el('device-download', { size: 16 }), 'Install this app']
         )
       );
     }

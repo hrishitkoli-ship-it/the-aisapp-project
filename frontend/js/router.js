@@ -36,9 +36,9 @@
   'use strict';
 
   const TABS = [
-    { key: 'workspace', label: 'Workspace', icon: '📁' },
-    { key: 'roster', label: 'Roster', icon: '👥' },
-    { key: 'instructions', label: 'Instructions', icon: '📋' },
+    { key: 'workspace', label: 'Workspace', icon: 'folder' },
+    { key: 'roster', label: 'Roster', icon: 'users' },
+    { key: 'instructions', label: 'Instructions', icon: 'clipboard' },
   ];
 
   const appHeader = document.getElementById('app-header');
@@ -81,7 +81,10 @@
     btn.type = 'button';
     btn.setAttribute('aria-label', 'Toggle dark and light theme');
     const updateIcon = () => {
-      btn.textContent = window.AihubTheme.current() === 'light' ? '☀' : '☾';
+      btn.innerHTML = window.AihubIcons.svg(
+        window.AihubTheme.current() === 'light' ? 'sun' : 'moon',
+        { size: 17 }
+      );
     };
     updateIcon();
     btn.addEventListener('click', () => {
@@ -109,7 +112,7 @@
     backBtn.className = 'aihub-header-back';
     backBtn.type = 'button';
     backBtn.setAttribute('aria-label', 'Back to projects');
-    backBtn.textContent = '←';
+    backBtn.innerHTML = window.AihubIcons.svg('chevron-left', { size: 20 });
     backBtn.addEventListener('click', () => navigateTo('#/'));
     appHeader.appendChild(backBtn);
 
@@ -147,7 +150,7 @@
       const icon = document.createElement('span');
       icon.className = 'aihub-tab-icon';
       icon.setAttribute('aria-hidden', 'true');
-      icon.textContent = tab.icon;
+      icon.innerHTML = window.AihubIcons.svg(tab.icon, { size: 19 });
       const label = document.createElement('span');
       label.textContent = tab.label;
       btn.appendChild(icon);

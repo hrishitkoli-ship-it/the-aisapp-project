@@ -83,18 +83,18 @@
   // -------------------------------------------------------------
 
   const TYPE_META = {
-    session_registered: { icon: '\u{1F7E2}', label: 'Session' }, // 🟢
-    task_requested: { icon: '\u{1F4E9}', label: 'Task request' }, // 📩
-    assignment_proposed: { icon: '\u{1F4CB}', label: 'Proposal' }, // 📋
-    assignment_approved: { icon: '\u2705', label: 'Approved' }, // ✅
-    assignment_rejected: { icon: '\u274C', label: 'Rejected' }, // ❌
-    file_write: { icon: '\u{1F4DD}', label: 'File write' }, // 📝
-    file_delete: { icon: '\u{1F5D1}', label: 'File delete' }, // 🗑
-    token_regenerated: { icon: '\u{1F511}', label: 'Token' }, // 🔑
+    session_registered: { icon: 'users', label: 'Session' },
+    task_requested: { icon: 'inbox', label: 'Task request' },
+    assignment_proposed: { icon: 'clipboard', label: 'Proposal' },
+    assignment_approved: { icon: 'check-circle', label: 'Approved' },
+    assignment_rejected: { icon: 'x-circle', label: 'Rejected' },
+    file_write: { icon: 'edit', label: 'File write' },
+    file_delete: { icon: 'trash', label: 'File delete' },
+    token_regenerated: { icon: 'key', label: 'Token' },
   };
 
   function metaFor(type) {
-    return TYPE_META[type] || { icon: '\u2022', label: type || 'Activity' };
+    return TYPE_META[type] || { icon: null, label: type || 'Activity' };
   }
 
   // -------------------------------------------------------------
@@ -104,7 +104,7 @@
   function renderRow(entry) {
     if (entry.type === 'security_alert') {
       return h('div', { class: 'aihub-activity-row aihub-activity-row--alert' }, [
-        h('span', { class: 'aihub-activity-icon', 'aria-hidden': 'true' }, '\u26A0\uFE0F'), // ⚠️
+        window.AihubIcons.el('warning', { className: 'aihub-activity-icon', size: 17 }),
         h('div', { class: 'aihub-activity-body' }, [
           h('div', { class: 'aihub-activity-message' }, [
             h('span', { class: 'aihub-activity-alert-tag' }, 'Security alert'),
@@ -120,8 +120,11 @@
     }
 
     const meta = metaFor(entry.type);
+    const iconEl = meta.icon
+      ? window.AihubIcons.el(meta.icon, { className: 'aihub-activity-icon', size: 17 })
+      : h('span', { class: 'aihub-activity-icon' }, '\u2022'); // plain bullet -- genuinely unrecognized type, not emoji
     return h('div', { class: 'aihub-activity-row' }, [
-      h('span', { class: 'aihub-activity-icon', 'aria-hidden': 'true' }, meta.icon),
+      iconEl,
       h('div', { class: 'aihub-activity-body' }, [
         h('div', { class: 'aihub-activity-message' }, entry.message || meta.label),
         h('div', { class: 'aihub-activity-meta' }, [
@@ -157,7 +160,7 @@
           'aria-label': 'Refresh activity',
           onclick: () => refresh(),
         },
-        '\u21BB' // ↻
+        window.AihubIcons.el('refresh', { size: 16 })
       ),
     ]);
     const listEl = h('div', { class: 'aihub-activity-list' });

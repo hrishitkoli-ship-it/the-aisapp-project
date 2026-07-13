@@ -237,7 +237,7 @@
           },
           [
             h('span', { class: 'aihub-tree-caret' }, isOpen ? '▾' : '▸'),
-            h('span', { class: 'aihub-tree-icon' }, '📁'),
+            window.AihubIcons.el('folder', { className: 'aihub-tree-icon', size: 15 }),
             h('span', { class: 'aihub-tree-name' }, node.name),
           ]
         );
@@ -255,7 +255,7 @@
             onclick: () => openFile(node.path),
           },
           [
-            h('span', { class: 'aihub-tree-icon' }, '📄'),
+            window.AihubIcons.el('file', { className: 'aihub-tree-icon', size: 15 }),
             h('span', { class: 'aihub-tree-name' }, node.name),
           ]
         );
@@ -462,8 +462,16 @@
     clear(mountEl);
 
     const toolbar = h('div', { class: 'aihub-ws-toolbar' }, [
-      h('button', { class: 'aihub-btn aihub-btn--subtle', onclick: createNewFile }, '+ New file'),
-      h('button', { class: 'aihub-btn aihub-btn--subtle', onclick: loadTree }, '⟳ Refresh'),
+      h(
+        'button',
+        { class: 'aihub-btn aihub-btn--subtle aihub-icon-row', onclick: createNewFile },
+        [window.AihubIcons.el('plus', { size: 16 }), 'New file']
+      ),
+      h(
+        'button',
+        { class: 'aihub-btn aihub-btn--subtle aihub-icon-row', onclick: loadTree },
+        [window.AihubIcons.el('refresh', { size: 16 }), 'Refresh']
+      ),
     ]);
     mountEl.appendChild(toolbar);
 
@@ -494,8 +502,8 @@
     const header = h('div', { class: 'aihub-ws-editor-header' }, [
       h(
         'button',
-        { class: 'aihub-btn aihub-btn--subtle', onclick: closeFile },
-        '← Files'
+        { class: 'aihub-btn aihub-btn--subtle aihub-icon-row', onclick: closeFile },
+        [window.AihubIcons.el('chevron-left', { size: 16 }), 'Files']
       ),
       h('span', { class: 'aihub-ws-editor-path aihub-mono' }, state.selectedPath),
     ]);
@@ -558,8 +566,16 @@
 
     const actions = h('div', { class: 'aihub-ws-editor-actions' }, [
       saveBtn,
-      h('button', { class: 'aihub-btn', onclick: downloadCurrentFile }, '⬇ Download'),
-      h('button', { class: 'aihub-btn aihub-btn--danger', onclick: deleteCurrentFile }, '🗑 Delete'),
+      h(
+        'button',
+        { class: 'aihub-btn aihub-icon-row', onclick: downloadCurrentFile },
+        [window.AihubIcons.el('download', { size: 16 }), 'Download']
+      ),
+      h(
+        'button',
+        { class: 'aihub-btn aihub-btn--danger aihub-icon-row', onclick: deleteCurrentFile },
+        [window.AihubIcons.el('trash', { size: 16 }), 'Delete']
+      ),
     ]);
     wrap.appendChild(actions);
 

@@ -16,7 +16,7 @@
  * ------------------------------------------------------------------
  */
 
-const CACHE_NAME = 'aihub-shell-v2';
+const CACHE_NAME = 'aihub-shell-v3';
 
 const SHELL_ASSETS = [
   '/',
@@ -26,6 +26,7 @@ const SHELL_ASSETS = [
   '/css/projects.css',
   '/css/workspace.css',
   '/css/instructions-roster.css',
+  '/js/icons.js',
   '/js/theme.js',
   '/js/router.js',
   '/js/projects.js',

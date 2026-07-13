@@ -93,6 +93,17 @@ button, input, textarea, select {
   color: inherit;
 }
 
+/* Smooth, subtle feedback on every interactive control -- applies
+   app-wide since it only adds transition/active behavior, it doesn't
+   redeclare colors or borders that other stylesheets already own. */
+button {
+  transition: background-color 0.12s ease, border-color 0.12s ease, transform 0.08s ease, opacity 0.12s ease;
+}
+
+button:active {
+  transform: scale(0.97);
+}
+
 a {
   color: var(--aihub-accent);
 }
@@ -101,12 +112,16 @@ code, pre {
   font-family: var(--aihub-font-mono);
 }
 
-/* Respect reduced-motion preferences: kill the theme-switch fade and
-   any other transition for anyone who's asked for it. */
+/* Respect reduced-motion preferences: kill the theme-switch fade, the
+   button press-scale, and any other transition for anyone who's asked
+   for it. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     transition-duration: 0.001ms !important;
     animation-duration: 0.001ms !important;
+  }
+  button:active {
+    transform: none;
   }
 }
 
@@ -264,6 +279,28 @@ code, pre {
   letter-spacing: 0.09em;
   text-transform: uppercase;
   color: var(--aihub-text-dim);
+}
+
+.aihub-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  flex-shrink: 0;
+}
+
+.aihub-icon svg {
+  display: block;
+}
+
+/* Applied to any button/element combining an icon with a text label,
+   so the two align vertically and get a consistent gap -- explicit
+   class rather than a :has() selector for broader mobile browser
+   compatibility. */
+.aihub-icon-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .aihub-mono {
