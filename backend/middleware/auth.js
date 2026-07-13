@@ -20,12 +20,17 @@
  * this token maps to, if the caller identified one) so route handlers
  * can log "who did this" in the activity timeline.
  *
- * CHANGED: store.getProject() is now async (Postgres-backed -- see
- * db/store.js), so both middleware functions below are now async
- * too, and safeGetProject is awaited at both call sites. This file
- * is the single busiest chokepoint in the app (every route passes
- * through one of these two functions), so getting the await right
- * here specifically was the highest-value place to double check.
+ * CORRECTION (found live, not assumed -- see KNOWN_ISSUES.md /
+ * Known Failure Signature #6): the "now async, Postgres-backed" claim
+ * below was never true -- store.js is still the original fs-based
+ * datastore, same as routes/projects.js's comments wrongly claimed a
+ * Turso schema that didn't exist either. Awaiting a synchronous
+ * function is harmless in JS (resolves immediately, same value), so
+ * this specific mismatch never caused a functional bug here, unlike
+ * the projects.js case -- verified live with a real composite token
+ * against requireAIToken and loadProjectForHuman, both work correctly.
+ * Leaving `await` in place costs nothing and means this file needs no
+ * further change whenever store.js's storage layer actually changes.
  * ------------------------------------------------------------------
  */
 
