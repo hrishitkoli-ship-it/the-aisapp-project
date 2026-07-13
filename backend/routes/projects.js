@@ -228,11 +228,15 @@ router.delete('/:projectId', async (req, res, next) => {
     }
     if (!project) return res.status(404).json({ error: 'Project not found.' });
 
-    // A single scoped DELETE ... WHERE id = $1, cascading to
-    // aisapp_files automatically via the FK constraint. No second
-    // unsuffixed filesystem call exists anymore, so there's no
-    // equivalent of the old Session-4-found vulnerability left to
-    // guard against here.
+    // store.removeProjectFromIndex() explicitly deletes aisapp_files
+    // rows first, then the project row -- NOT via the schema's
+    // declared ON DELETE CASCADE (see that function's own comment in
+    // store.js for why: SQLite/Turso's foreign_keys pragma defaults
+    // off, and isn't safely assumed to persist across the Serverless
+    // SDK's request-scoped transport). Matches this file's own header
+    // comment above -- a prior version of THIS specific comment
+    // claimed the opposite (relying on FK cascade), which contradicted
+    // both the header and the actual store.js code; corrected here.
     await store.removeProjectFromIndex(projectId);
     res.json({ success: true });
   } catch (err) {
