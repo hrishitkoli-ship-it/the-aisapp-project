@@ -20,10 +20,14 @@
  *   currentTask    - what it's doing right now
  *   taskQueue      - array of requests from other sessions
  *
- * CHANGED: store.getSessions()/saveSessions() are now async
- * (Postgres-backed). Every call site got `await` + async handlers
- * with try/catch -> next(err). The read-only-for-humans structure
- * (which router mounts what) is untouched.
+ * CORRECTION (found live, not assumed -- see KNOWN_ISSUES.md /
+ * Known Failure Signature #6): "Postgres-backed" was never true --
+ * store.js is still the original fs-based datastore. Every function
+ * this file calls (getSessions/saveSessions/appendActivity) genuinely
+ * exists there, so the extra `await`/`async` costs nothing and never
+ * caused a functional bug -- verified live end-to-end: register a
+ * session via the AI route, read it back via both the AI route and
+ * the human (no-token) read route.
  * ------------------------------------------------------------------
  */
 
