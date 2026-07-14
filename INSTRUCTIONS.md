@@ -292,6 +292,7 @@ the same thing a third time.
 | 7 | A route handler is rewritten for a new concern (e.g. bundling an encryption key into the token) and silently drops an unrelated call it used to make (e.g. `saveProject()`, `generateDeviceCode()`), because the rewrite was done against a mental model of the datastore that had already changed elsewhere | Two independent pieces of in-flight work (a datastore migration + a token-format change) landed on the same file at different times, each written against a different assumption about the other | After any rewrite of a route handler, re-run the FULL lifecycle for that resource (create, single-lookup, update, delete) against the real server — not just the specific case the rewrite was for. This is genuinely Rule 6, just stated for the specific case of "a handler got rewritten," not only "new code got written" | Session 3 (device-code embedding dropped a 2nd time; `saveProject()`/`removeProjectDir()` both silently dropped in the same rewrite). **Also the exact mechanism behind row 9's recurrence below** — same file, same pattern, different dropped fix |
 | 8 | Two files that are supposed to share one definition (`app.js` as the shared Express app; `server.js`/`api/index.js` as its two consumers) silently diverge because one of them was never actually rewritten to depend on the other — it just independently rebuilt an equivalent-looking copy instead | `server.js` predates the `app.js` split and was never actually converted to import it, despite `app.js`'s own header comment claiming it was. No test exercised `server.js` specifically after `app.js` started gaining new middleware (helmet/CSP, rate limiting), so the drift wasn't visible until something added to `app.js` was checked against the real entry point and found completely absent | When a refactor claims "two consumers share one definition," grep for the actual `require()`/`import` proving that, don't trust the comment. If a fix only seems to take effect through one of two supposedly-equivalent entry points, suspect this pattern immediately | Session 4 — found while verifying CSP headers actually reached `node backend/server.js`, the real local/Termux entry point, not just `app.js` loaded in isolation |
 | 9 | **[RECURRED ONCE ALREADY — see row 7 for why]** A route's own comment says "no secrets included" / matches clearly-intended behavior, but the actual response leaks a secret field anyway, because the route was written against a different store.js/schema shape than the one actually live (same root cause family as row 4, different concrete symptom) | `GET /api/projects` returned every project's `tokenHash` in the clear to any unauthenticated caller — the route's own `stripSecret()` helper exists and is correctly used by three OTHER routes in the same file, just not this one, because `store.listProjects()` on the live store.js returns a different (fuller) shape than whatever this route was written expecting | Don't trust a route's own comment describing its output shape — check what the live `store.*` function actually returns and confirm the response is filtered through the same secret-stripping helper every sibling route in the file already uses. Fixed by routing the response through the existing `stripSecret()` (`.map(stripSecret)`) rather than inventing a new filtering approach. **This exact fix was lost once already** when `routes/projects.js` was independently rewritten from a base that predated it (row 7's pattern, applied to this same fix) — re-applied and re-verified live a second time; full writeup in `KNOWN_ISSUES.md` specifically so a THIRD occurrence is less likely (grep-able, not just buried in a diff) | Session 4 — found live, not by code review, while testing an unrelated fix (`app.js`/`server.js` reconciliation) end-to-end. Recurrence found and re-fixed later the same session, immediately after pulling a new round of `routes/projects.js` changes |
+| 10 | A route's own `catch` block checks `err instanceof SomeErrorClass` where `SomeErrorClass` is a `store.*` export that doesn't actually exist on the live `store.js` — `instanceof`'s right-hand side must be a constructor, so checking against `undefined` *throws a TypeError*, inside the very catch block meant to handle the original error, with nothing above it to catch that second throw | Distinct mechanism from row 3 (which is about a *missing* try/catch) — here the try/catch exists, but its own error-classification logic is what fails. `routes/files.js` and `routes/projects.js` both checked `err instanceof store.ProjectSizeLimitError` / `store.AccountSizeLimitError`, neither of which store.js exported at the time | Prefer a generic `if (err.statusCode)` check over hardcoding specific error classes one at a time (matches any current or future typed error without needing another manual fix each time the typed-error set changes) — this is exactly the pattern `app.js`'s own central handler had already been reconciled to, before this row's fix ported the same pattern to these two routes' *own* local catch blocks, which intercept before ever reaching `app.js`'s handler at all | Session 1 — found live while testing file writes (a normal, no-conflict write triggered it; the underlying `fileOps.js` error it was trying to classify is row 4's `store.run is not a function`), confirmed the crash, applied the fix, confirmed the same request then returns a clean response with the server still running |
 
 ---
 
@@ -591,6 +592,40 @@ Verified end-to-end against the real backend before pushing: static asset
 serving, project creation, file tree/read/write, the conflict flow above,
 and registering as `session-1` in a local test project's roster while
 developing (not committed — `projects/` is gitignored).
+
+**Follow-up (same session, human-requested): emoji removal + icon
+system, plus an unrelated live crash fix found along the way.**
+- New `frontend/js/icons.js`: 19 hand-drawn stroke SVG icons replacing
+  every emoji found across `router.js`/`workspace.js` (mine) and
+  `activity.js`/`projects.js` (Sessions 2/3) — a cross-cutting change,
+  so it's one shared module rather than patched differently per file.
+  `currentColor` stroke means every icon follows the theme
+  automatically. Verified visually before shipping (rendered the actual
+  shipped path data to a real PNG grid via a one-off local cairosvg
+  install, dev-only, not a project dependency), not just by reading
+  path coordinates. Caught two integration gaps pre-push: `icons.js`
+  wasn't wired into `index.html`'s script tags at all, and the service
+  worker's cached-asset list hadn't been updated (bumped to v3).
+- Small additional polish within own files: button press-state and
+  hover transitions, previously instant/no-transition.
+- Separately, human explicitly redirected away from Session 4's
+  territory (the admin-secret/human-route-auth work Session 4 itself
+  had already attempted and abandoned on collision) toward "something
+  else" — re-verifying file-content storage (Known Failure Signature
+  #4) surfaced a live crash distinct from that KFS: `err instanceof
+  store.ProjectSizeLimitError`/`AccountSizeLimitError` in
+  `files.js`/`projects.js`, neither class existing on live `store.js`,
+  crashing the whole process (not a 500 — confirmed via server log,
+  the entire Node process exited) on any file-write error. Fixed with
+  the same generic `err.statusCode` pattern `app.js`'s own handler had
+  already been reconciled to (see Known Failure Signature #10).
+  Verified live: reproduced the crash, applied the fix, confirmed the
+  same request now returns cleanly and the server stays up. Also filed
+  (not fixed — Session 2's file, mid-migration) an observation in
+  `IDEAS.md`: a Turso connection with unreachable/placeholder
+  credentials appeared to hang rather than fail fast, though only
+  tested against a sandbox with no real path to `*.turso.io` at all, so
+  flagged as "worth checking against a real instance," not confirmed.
 
 ### Session 5 — Testing, docs, and integration *(historical — lane retired)*
 **Status: shipped, lane closed.** Full route smoke test

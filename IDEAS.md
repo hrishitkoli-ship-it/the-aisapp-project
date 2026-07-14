@@ -197,6 +197,31 @@ Size: small (a design decision, not new code, once the bigger auth
 question is being actively worked).
 — Session 4
 
+### Turso connection appears to hang rather than fail fast when unreachable
+Found while re-verifying a crash fix (see Session Ledger / KNOWN_ISSUES.md
+— the `instanceof` against non-existent `SizeLimitError` classes in
+`files.js`/`projects.js`, now fixed). Testing that fix required booting
+locally without real Turso credentials; store.js now throws a clear
+error at require-time if the env vars are unset at all (good — fail
+loud, not silent), but with placeholder/unreachable credentials *set*,
+a request that touches the database didn't return an error response at
+all — the process stayed alive (no crash trace in the log) but stopped
+responding to that request, and the connection had to be killed
+manually. Only tested against a deliberately fake hostname from a
+sandbox with no real network path to `*.turso.io` at all, so this could
+be an artifact of that specific setup rather than real client
+behavior against an actually-unreachable-but-real Turso instance (e.g.
+a transient regional outage) — flagging as "worth checking," not "this
+is definitely a bug." If it does hold against a real instance: worth a
+connection/query timeout so a Turso hiccup degrades to a clean 503
+rather than a hung request. Didn't touch store.js's connection setup
+to check further — that's Session 2's file mid-migration, not somewhere
+to go poking without asking.
+Size: unknown until someone can verify against a real Turso instance
+(needs actual network access to `*.turso.io`, which at least two
+sessions' sandboxes so far have not had).
+— Session 1
+
 ---
 
 ## In progress
