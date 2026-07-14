@@ -105,8 +105,14 @@ router.post('/', humanSensitiveLimiter, async (req, res, next) => {
       token: composeToken(rawToken, encryptionKey),
     });
   } catch (err) {
-    if (err instanceof store.AccountSizeLimitError) {
-      return res.status(413).json({ error: err.message });
+    // Same bug class as files.js's write handler (see that file's
+    // comment): store.AccountSizeLimitError doesn't exist on the
+    // currently-live store.js, so instanceof against it throws instead
+    // of evaluating to false, which would crash this handler the same
+    // way before ever reaching next(err). Generic statusCode check
+    // instead, matching app.js's already-reconciled central handler.
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({ error: err.message });
     }
     next(err);
   }

@@ -122,8 +122,18 @@ async function handleWriteFile(req, res) {
       await logSecurityAlert(req, projectId, relPath, 'write');
       return res.status(400).json({ error: err.message });
     }
-    if (err instanceof store.ProjectSizeLimitError || err instanceof store.AccountSizeLimitError) {
-      return res.status(413).json({ error: err.message });
+    // Was: `err instanceof store.ProjectSizeLimitError || err instanceof
+    // store.AccountSizeLimitError` -- neither class exists on the
+    // currently-live store.js (confirmed via its module.exports, same
+    // check app.js's own error handler already went through). Since
+    // the right-hand side of instanceof must be a constructor,
+    // checking against `undefined` throws a TypeError, which crashed
+    // this whole process on any file-write error (confirmed live, not
+    // theoretical). Generic statusCode check instead, matching app.js's
+    // already-reconciled handler -- catches any current or future typed
+    // error that sets one without needing another manual fix here.
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({ error: err.message });
     }
     res.status(500).json({ error: `Failed to write file: ${err.message}` });
   }
