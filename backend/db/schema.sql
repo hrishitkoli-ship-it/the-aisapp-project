@@ -41,8 +41,27 @@
 -- the aisapp_projects row, so project deletion is correct regardless
 -- of pragma state.
 
+-- ---- Device identity ----
+-- Keyed by the code itself (not a hardcoded single row) so this can
+-- genuinely support multiple devices later -- e.g. once device-code
+-- generation moves client-side (browser localStorage, one per
+-- browser/PWA-install) rather than being a single server-side
+-- identity, which stops making sense once a shared Vercel deployment
+-- serves multiple physical devices as clients rather than being one
+-- Termux-hosted server IS the device. For now, getOrCreateDeviceCode
+-- in store.js treats "the first/only row" as the answer, matching
+-- the existing single-device contract routes/device.js and
+-- tokens.js's generateToken(deviceCode) already assume -- this table
+-- shape just avoids needing another migration when that assumption
+-- changes.
+CREATE TABLE aisapp_devices (
+  code TEXT PRIMARY KEY,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE aisapp_projects (
   id TEXT PRIMARY KEY,
+  device_code TEXT REFERENCES aisapp_devices(code),
   project TEXT NOT NULL DEFAULT '{}',
   sessions TEXT NOT NULL DEFAULT '[]',
   instructions TEXT NOT NULL DEFAULT '{"notes":"","functionalities":[],"assignments":[]}',
@@ -140,3 +159,4 @@ WHEN (
 BEGIN
   SELECT RAISE(ABORT, 'ACCOUNT_CAP:Your account has reached its ~5MB total storage limit.');
 END;
+

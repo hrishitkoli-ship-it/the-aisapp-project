@@ -1,18 +1,35 @@
 /**
  * routes/device.js
  * ------------------------------------------------------------------
- * Device identity: the permanent 12-char code embedded as a fixed
- * prefix in every project token created on this device (see
- * utils/tokens.js and db/store.js). Human-facing only, same trust
- * boundary reasoning as routes/projects.js -- no token required, the
- * device itself is the boundary.
+ * Device identity: the permanent code embedded as a fixed prefix in
+ * every project token created on this device (see utils/tokens.js
+ * and db/store.js). Human-facing only, same trust boundary reasoning
+ * as routes/projects.js -- no token required, the device itself is
+ * the boundary.
+ *
+ * CHANGED (Turso reconciliation): the original version of this file
+ * called store.getDevice()/store.listProjects() synchronously and
+ * did fs.rmSync(store.projectDir(p.id)) directly for the delete
+ * cascade -- correct against the JSON-file store.js that was live at
+ * the time, but incompatible with the async, Turso-backed store.js
+ * this app now uses (no real filesystem, no projectDir()). Ported to
+ * async store.* calls throughout.
+ *
+ * ALSO CHANGED: the delete cascade now scopes to THIS device's own
+ * projects (store.listProjectIdsForDevice(code)) rather than every
+ * project in the database. The original single-device model made
+ * "delete everything" and "delete this device's projects" the same
+ * operation, since there was only ever one device. Now that
+ * aisapp_devices can hold more than one device's identity (see
+ * schema.sql's comment on why a shared Vercel deployment needs this),
+ * those two things are no longer the same operation, and only the
+ * narrower one (this device's own projects) is what "delete my
+ * device identity" should ever mean.
  * ------------------------------------------------------------------
  */
 
 const express = require('express');
-const fs = require('fs');
 const store = require('../db/store');
-const { generateDeviceCode } = require('../utils/tokens');
 const { humanSensitiveLimiter } = require('../middleware/rateLimit');
 
 const router = express.Router();
@@ -21,9 +38,9 @@ const router = express.Router();
 // exists yet -- it's only created lazily on first project creation, not
 // on server boot, so a brand new install with zero projects legitimately
 // has no device identity yet).
-router.get('/', (req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
-    const device = store.getDevice();
+    const device = await store.getDevice();
     res.json(device || { code: null });
   } catch (err) {
     next(err);
@@ -37,24 +54,10 @@ router.get('/', (req, res, next) => {
 // cascades" means here). Irreversible: the next project created after
 // this gets a brand new, different permanent code.
 //
-// Requires { "confirm": true } in the body. Same reasoning as project
-// deletion's planned confirmation step (see INSTRUCTIONS.md Session 3
-// scope notes) -- a bare DELETE with no body is deliberately rejected
-// rather than treated as "confirmed by virtue of calling the endpoint,"
-// since this is a wider blast radius than deleting a single project.
-//
-// try/catch + next(err) here (and above) rather than bare async/await:
-// this app runs Express 4 (confirmed via package.json), which does NOT
-// auto-catch a rejected promise from an async route handler the way
-// Express 5 does -- an uncaught throw here previously crashed the
-// entire server process, not just this one request (found live during
-// this session's own testing: a typo calling a non-existent store
-// function took the whole process down). This file is scoped
-// defensively; the same gap likely exists across other async route
-// handlers in this codebase (projects.js, sessions.js, etc.) but
-// retrofitting all of them is outside Session 4's audit-not-rebuild
-// scope for this pass -- flagged as a finding, not silently expanded
-// into.
+// Requires { "confirm": true } in the body. A bare DELETE with no body
+// is deliberately rejected rather than treated as "confirmed by virtue
+// of calling the endpoint," since this is a wider blast radius than
+// deleting a single project.
 router.delete('/', humanSensitiveLimiter, async (req, res, next) => {
   try {
     const { confirm } = req.body || {};
@@ -65,33 +68,32 @@ router.delete('/', humanSensitiveLimiter, async (req, res, next) => {
       });
     }
 
-    const device = store.getDevice();
+    const device = await store.getDevice();
     if (!device) {
       return res.status(404).json({ error: 'No device identity exists yet.' });
     }
 
-    const projects = store.listProjects();
+    // Scoped to THIS device's own projects -- see file header on why
+    // this is no longer "every project in the database" now that
+    // aisapp_devices can hold more than one device.
+    const projectIds = await store.listProjectIdsForDevice(device.code);
     const deletionErrors = [];
-    for (const p of projects) {
-      // p.id always comes from our own _index.json, written by nanoid(10)
-      // at creation time, never from an external request param -- so this
-      // isn't the same untrusted-input path the InvalidProjectIdError
-      // containment check in store.projectDir() exists for. It still runs
-      // regardless of caller, though, so it's wrapped rather than left
-      // bare: a hand-edited or corrupted _index.json entry could still
-      // trip it, and one bad entry shouldn't abort deleting the rest.
+    for (const id of projectIds) {
       try {
-        fs.rmSync(store.projectDir(p.id), { recursive: true, force: true });
+        // Reuses the already-tested delete path (deletes files rows
+        // then the project row -- see store.js's removeProjectFromIndex
+        // header on why this doesn't rely on the schema's declared
+        // ON DELETE CASCADE).
+        await store.removeProjectFromIndex(id);
       } catch (err) {
-        deletionErrors.push({ id: p.id, error: err.message });
+        deletionErrors.push({ id, error: err.message });
       }
     }
-    await store.clearProjectIndex();
     await store.deleteDevice();
 
     res.json({
       success: true,
-      deletedProjectCount: projects.length - deletionErrors.length,
+      deletedProjectCount: projectIds.length - deletionErrors.length,
       ...(deletionErrors.length > 0 && { deletionErrors }),
     });
   } catch (err) {

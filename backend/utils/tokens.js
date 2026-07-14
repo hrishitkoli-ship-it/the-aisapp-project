@@ -1,15 +1,43 @@
 /**
  * tokens.js
  * ------------------------------------------------------------------
- * Generates and verifies project-scoped AI access tokens.
+ * Generates and verifies project-scoped AI access tokens, this
+ * device's permanent identity code, and the content-encryption key
+ * bundled into the final composite token.
  *
- * Format mirrors GitHub PATs for familiarity:
- *   aihub_<32 random url-safe chars>
+ * Full format: aihub_<12-char deviceCode>_<32 random chars>.<encryptionKeyB64url>
+ *
+ * Two independent layers, deliberately not entangled:
+ *
+ * 1. DEVICE CODE (restored from a prior regression -- an earlier pass
+ *    this session overwrote this file with a stale copy that had no
+ *    device-code support, breaking project creation entirely; fixed
+ *    properly this time, reconciled with the encryption-key layer
+ *    below rather than just reverted). Embedded via underscore into
+ *    what's otherwise just "the auth token" -- exactly per the
+ *    original design: the device code is NOT parsed back out for
+ *    verification. verifyToken hashes and compares the WHOLE
+ *    aihub_<deviceCode>_<random> string as one opaque unit. It's a
+ *    fixed, human-recognizable prefix (so someone glancing at two
+ *    tokens can tell they came from the same device), not a
+ *    machine-parsed field.
+ *
+ * 2. ENCRYPTION KEY (this session's addition). Split off by a `.`
+ *    delimiter -- safe because base64url's alphabet never contains a
+ *    period. UNLIKE the device code, this DOES get parsed back out
+ *    client-side (by whatever's using contentCrypto.js), but the
+ *    split happens at the OUTERMOST layer only: parseCompositeToken
+ *    treats everything before the first '.' as one opaque "authToken"
+ *    string and passes it whole to verifyToken -- it never looks
+ *    inside that string's structure. This is why these two layers
+ *    don't interfere with each other: the device code lives INSIDE
+ *    the opaque authToken portion; the encryption key lives OUTSIDE
+ *    it, appended after that portion is already complete.
  *
  * SECURITY NOTE: We never store the raw token anywhere. Only its
- * SHA-256 hash is persisted in project.json. The raw token is shown
- * to the user exactly once (at creation / regeneration time) via the
- * API response, same as GitHub does. If it's lost, the user must
+ * SHA-256 hash is persisted. The raw composite token is shown to the
+ * user exactly once (at creation / regeneration time) via the API
+ * response, same as GitHub does. If it's lost, the user must
  * regenerate -- there is no "reveal" endpoint, because a reveal
  * endpoint would defeat the purpose of hashing it in the first place.
  * ------------------------------------------------------------------
@@ -18,24 +46,32 @@
 const crypto = require('crypto');
 
 const TOKEN_PREFIX = 'aihub_';
+const DEVICE_CODE_LENGTH = 12; // matches "permanent 12-char code" in db/store.js
 
-/** 12-char permanent device identity, embedded as a fixed prefix in
- *  every project token created on this device (see routes/device.js).
- *  Re-added here after being dropped in the composite-token rewrite --
- *  see KNOWN_ISSUES.md for the full history; this is the second time
- *  this exact function has gone missing from this file. */
+/**
+ * Generates this device's permanent identity code, once, the first
+ * time any project is created on it (see store.js's
+ * getOrCreateDeviceCode, which calls this and persists the result so
+ * it's never regenerated). base64url so it's safe to embed directly
+ * in a URL-safe token string with no further encoding.
+ */
 function generateDeviceCode() {
-  return crypto.randomBytes(6).toString('hex'); // 6 bytes -> 12 hex chars
+  // 9 random bytes -> 12 base64url chars exactly (9 * 8 / 6 = 12),
+  // so DEVICE_CODE_LENGTH stays accurate without needing to slice.
+  return crypto.randomBytes(9).toString('base64url');
 }
 
-/** deviceCode is optional so any existing caller that doesn't pass one
- *  still gets a valid (if unprefixed) token -- but every current
- *  caller in routes/projects.js does pass one, via
- *  store.getOrCreateDeviceCode(generateDeviceCode). */
 function generateToken(deviceCode) {
   // 32 bytes -> 43 base64url chars, plenty of entropy for a local tool.
   const raw = crypto.randomBytes(32).toString('base64url');
-  return deviceCode ? `${TOKEN_PREFIX}${deviceCode}_${raw}` : `${TOKEN_PREFIX}${raw}`;
+  if (!deviceCode) {
+    // Callers that haven't been updated to pass a deviceCode yet
+    // still get a valid, functional token -- just without the
+    // visible device prefix. Never silently drop entropy or throw
+    // for a missing optional argument.
+    return `${TOKEN_PREFIX}${raw}`;
+  }
+  return `${TOKEN_PREFIX}${deviceCode}_${raw}`;
 }
 
 function hashToken(token) {
@@ -53,18 +89,9 @@ function verifyToken(candidateToken, storedHash) {
 }
 
 // ---------------------------------------------------------------------
-// Composite tokens: auth token + content-encryption key bundled into
-// one string an AI agent copies as its single credential, so setup
-// stays "paste one token" even though it now carries two purposes.
-//
-// Format: aihub_<authTokenRandomPart>.<encryptionKeyB64url>
-//
-// The `.` delimiter is safe because base64url's alphabet (A-Za-z0-9-_)
-// never contains a period -- unlike JWTs, there's no need for a
-// header/signature segment here since the server already verifies
-// the auth part via hashToken/verifyToken (unchanged, above) and has
-// no legitimate use for the encryption key at all, so it's never
-// parsed server-side except to be stripped off before verification.
+// Composite tokens: the device-code-embedded auth token above, plus a
+// content-encryption key appended after it, bundled into one string
+// an AI agent copies as its single credential.
 //
 // generateEncryptionKey() produces RAW random key bytes (not derived
 // from a password -- that's a separate concern for device-migration,
@@ -89,7 +116,10 @@ function composeToken(authToken, encryptionKeyB64url) {
  * Robust to receiving a BARE auth token with no encryption key
  * appended (no '.' present) -- returns encryptionKey: null in that
  * case rather than throwing, so this stays backward-compatible with
- * any token issued before this composite scheme existed.
+ * any token issued before this composite scheme existed. The
+ * returned `authToken` still has its device-code prefix embedded
+ * (untouched) -- this function only ever splits on the FIRST '.',
+ * never looks inside the authToken portion's own structure.
  */
 function parseCompositeToken(compositeToken) {
   if (!compositeToken) return { authToken: null, encryptionKey: null };
@@ -109,6 +139,7 @@ module.exports = {
   hashToken,
   verifyToken,
   TOKEN_PREFIX,
+  DEVICE_CODE_LENGTH,
   generateEncryptionKey,
   composeToken,
   parseCompositeToken,
