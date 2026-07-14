@@ -54,9 +54,53 @@
 -- tokens.js's generateToken(deviceCode) already assume -- this table
 -- shape just avoids needing another migration when that assumption
 -- changes.
+--
+-- code TEXT PRIMARY KEY NOT NULL (Session 4, NOT NULL added
+-- explicitly): tested directly against a real local Turso/Limbo
+-- engine and confirmed that SQLite's PRIMARY KEY constraint does NOT
+-- imply NOT NULL for a TEXT column the way it would in Postgres/
+-- MySQL, or the way INTEGER PRIMARY KEY's special rowid-aliasing
+-- behavior makes it feel like it does in SQLite itself -- an INSERT
+-- omitting `code` entirely was confirmed to succeed, silently storing
+-- a NULL primary key, which store.js's getOrCreateDeviceSecretHash and
+-- getOrCreateDeviceCode both implicitly assume can never happen ("a
+-- row can't exist without its code set" was this session's stated
+-- reasoning for treating getOrCreateDeviceCode's existing logic as
+-- safe under this schema -- correct for every INSERT this session's
+-- own code performs, but not structurally guaranteed by the schema
+-- itself before this line, which is the gap this closes).
+--
+-- device_secret_hash (Session 4, added alongside the NOT NULL fix
+-- above): gates human-facing WRITE routes now that "no cloud auth,
+-- device is the boundary" can no longer mean "anyone who can reach
+-- the server" once this is genuinely public -- see SECURITY.md §3b,
+-- which flagged this exact gap as open and undecided until now, and
+-- middleware/auth.js's requireDeviceSecret for the actual enforcement.
+-- NULLABLE, not NOT NULL: a device row can legitimately exist with no
+-- secret yet (freshly created, first write request hasn't arrived to
+-- trigger lazy creation -- see requireDeviceSecret's own comment on
+-- why this is lazy rather than a hard boot-time requirement). This is
+-- the SHA-256 hash only, same convention as aisapp_projects storing
+-- token hashes rather than raw tokens -- the raw secret is shown to
+-- the human exactly once, at creation, never persisted or retrievable
+-- again by design. Added as a column on the EXISTING table, not a new
+-- table: one more attribute of the same device identity (code +
+-- created_at + now also a write-gate secret), not a separate concept
+-- needing its own relation. Deliberately narrow and additive (one
+-- nullable column plus the NOT NULL fix above, no change to any
+-- existing column's meaning, no new table, no change to
+-- aisapp_projects' foreign key relationship) rather than a schema
+-- redesign, out of respect for this being actively-owned territory
+-- (see this file's own extensive header on how carefully the rest of
+-- this schema was verified) -- a narrow addition alongside that work
+-- is a different kind of change than deciding the underlying
+-- architecture, which stays out of scope here same as it was earlier
+-- this session when the device-identity gap itself was found and
+-- deliberately left for the owning session to resolve.
 CREATE TABLE aisapp_devices (
-  code TEXT PRIMARY KEY,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  code TEXT PRIMARY KEY NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  device_secret_hash TEXT
 );
 
 CREATE TABLE aisapp_projects (

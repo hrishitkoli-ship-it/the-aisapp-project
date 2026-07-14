@@ -78,6 +78,29 @@ function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
+/**
+ * Generates the human-facing device secret (see SECURITY.md §3b and
+ * middleware/auth.js's requireDeviceSecret for the full context: this
+ * gates human-facing WRITE routes now that this app is moving toward
+ * a public deployment, where "the device is the boundary" can no
+ * longer mean "anyone who can reach the server").
+ *
+ * DELIBERATELY NOT the same value as generateDeviceCode above: the
+ * device code is embedded inside every AI project token
+ * (aihub_<deviceCode>_<random>) and has therefore already been shared
+ * with every AI agent the human has ever handed a project token to.
+ * Reusing it as the human's own write-gate secret would mean any AI
+ * agent with a valid token could trivially derive the credential meant
+ * to gate destructive human actions -- a real security flaw, not an
+ * inelegant reuse. This is a fully independent secret: generated
+ * separately, hashed and verified via the same hashToken/verifyToken
+ * pair above, never embedded in or derivable from anything an AI agent
+ * ever sees.
+ */
+function generateDeviceSecret() {
+  return crypto.randomBytes(32).toString('base64url');
+}
+
 /** Constant-time-ish comparison to avoid trivial timing side-channels. */
 function verifyToken(candidateToken, storedHash) {
   if (!candidateToken || !storedHash) return false;
@@ -136,6 +159,7 @@ function parseCompositeToken(compositeToken) {
 module.exports = {
   generateToken,
   generateDeviceCode,
+  generateDeviceSecret,
   hashToken,
   verifyToken,
   TOKEN_PREFIX,

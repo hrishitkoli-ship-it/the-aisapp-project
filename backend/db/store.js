@@ -236,9 +236,11 @@ async function removeProjectFromIndex(projectId) {
 // ---------------------------------------------------------------------
 
 async function getDevice() {
-  const result = await run('SELECT code, created_at FROM aisapp_devices ORDER BY created_at ASC LIMIT 1');
+  const result = await run('SELECT code, created_at, device_secret_hash FROM aisapp_devices ORDER BY created_at ASC LIMIT 1');
   const row = result.rows[0];
-  return row ? { code: row.code, createdAt: row.created_at } : null;
+  return row
+    ? { code: row.code, createdAt: row.created_at, deviceSecretHash: row.device_secret_hash || null }
+    : null;
 }
 
 async function saveDevice(data) {
@@ -251,6 +253,67 @@ async function saveDevice(data) {
 
 async function deleteDevice() {
   await run('DELETE FROM aisapp_devices');
+}
+
+/**
+ * Sets device_secret_hash on the existing device row via UPDATE --
+ * NOT the JSON-object-spread merge pattern an earlier, now-obsolete
+ * version of this feature used (built against the old fs-JSON store,
+ * before this Turso migration landed; that version's "spread the
+ * existing object first" reasoning doesn't apply to a real SQL row --
+ * there's no risk of accidentally clobbering `code`/`created_at` here,
+ * since UPDATE only touches the column named). Requires a device row
+ * to already exist (i.e. getOrCreateDeviceCode must have run at least
+ * once) -- see getOrCreateDeviceSecretHash below for how the caller
+ * handles the "no device yet at all" case.
+ */
+async function setDeviceSecretHash(code, hash) {
+  await run('UPDATE aisapp_devices SET device_secret_hash = ? WHERE code = ?', [hash, code]);
+}
+
+/**
+ * Returns { hash, raw?, isNew } for this device's write-gate secret,
+ * creating one (and, if necessary, the device row itself) on first
+ * use. See middleware/auth.js's requireDeviceSecret for why this is
+ * lazy rather than a hard boot-time requirement, and
+ * utils/tokens.js's generateDeviceSecret for why this must be a
+ * value independent from the device code itself.
+ *
+ * Handles a genuinely new case the old fs-JSON version never needed
+ * to: a Turso-backed device row might not exist AT ALL yet (no
+ * project has ever been created on this Turso database), unlike the
+ * old version where getDevice()/saveDevice() operated on a single
+ * local file that either existed or didn't, with no "created but
+ * incomplete" state possible mid-write. Here, if no row exists,
+ * this creates one with BOTH a fresh device code AND the secret in
+ * one INSERT, rather than trying to UPDATE a row that isn't there yet.
+ */
+async function getOrCreateDeviceSecretHash(generateDeviceCode, generateDeviceSecret, hashSecret) {
+  const existing = await getDevice();
+
+  if (existing && existing.deviceSecretHash) {
+    return { hash: existing.deviceSecretHash, isNew: false };
+  }
+
+  const raw = generateDeviceSecret();
+  const hash = hashSecret(raw);
+
+  if (existing) {
+    // Device row exists (has a code already) but no secret yet --
+    // UPDATE just the new column, code/created_at untouched.
+    await setDeviceSecretHash(existing.code, hash);
+  } else {
+    // No device row at all -- create one with a fresh code AND the
+    // secret together, single INSERT.
+    const code = generateDeviceCode();
+    await run('INSERT INTO aisapp_devices (code, created_at, device_secret_hash) VALUES (?, ?, ?)', [
+      code,
+      new Date().toISOString(),
+      hash,
+    ]);
+  }
+
+  return { hash, raw, isNew: true };
 }
 
 /**
@@ -400,6 +463,8 @@ module.exports = {
   saveDevice,
   deleteDevice,
   getOrCreateDeviceCode,
+  getOrCreateDeviceSecretHash,
+  setDeviceSecretHash,
   getProject,
   saveProject,
   getSessions,

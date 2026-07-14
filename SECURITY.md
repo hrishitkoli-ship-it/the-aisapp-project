@@ -89,7 +89,47 @@ clear-eyed about: **the human-facing routes have no authentication,
 and once this is public, "no authentication" means exactly that, for
 anyone.**
 
-### 3b. Unauthenticated human routes become a real, not theoretical, gap
+### 3b. Unauthenticated human routes — CLOSED (this session), with an honest verification caveat
+
+**Update:** the gap described below is now closed. `middleware/auth.js`'s
+`requireDeviceSecret` gates every human-facing WRITE route (create/
+delete a project, delete-cascade the device, regenerate a token) behind
+a per-device secret — exactly the design flagged as needed. Read routes
+remain open by design (browsing your own data shouldn't need
+re-authenticating). The original problem description is left below,
+unedited, since it's still the right explanation of *why* this existed
+and *why* rate limiting alone was never enough.
+
+**Design, briefly:** a secret is created lazily on first write attempt
+(not at boot — see `requireDeviceSecret`'s own comment for why a hard
+boot-time requirement would permanently break the Vercel path, which
+has no equivalent "boot moment" a human would see). The first caller
+without a valid secret gets it back directly in the `401` response body
+— on a fresh install, that's virtually certainly the human themselves,
+setting the app up for the first time. Every subsequent wrong or
+missing secret gets a generic rejection with nothing leaked. Deliberately
+**not** the same value as the device code embedded in AI tokens — reusing
+that would mean any AI agent with a valid project token could trivially
+derive the credential meant to gate the human's own destructive actions.
+
+**Verification status — read this before trusting it blindly:** the
+middleware's own control-flow logic (lazy creation, correct-secret
+retry succeeding, wrong-secret/missing-header rejection, no secret
+leaked on failure) was tested directly and passed on every case — but
+via an isolated test with a mocked `store` module, not a live request
+against a real Turso database, because this sandbox cannot reach
+`*.turso.io` (same disclosed limitation `store.js`'s own header has
+carried all session). The underlying `store.getDevice()`/
+`getOrCreateDeviceSecretHash()` calls this middleware depends on were
+separately verified against a real local Turso-compatible engine
+(`@tursodatabase/database`, used for local testing only, not a runtime
+dependency) for the schema/SQL correctness — but the two were never
+proven together, end-to-end, against one real live connection. The
+first real end-to-end proof will happen at actual deploy time. Flagging
+this plainly rather than overstating confidence, same discipline this
+document has tried to hold throughout.
+
+**Original problem description, unedited:**
 
 Every route under `/api/projects/...` and `/api/device` — create a
 project, delete a project, delete-and-cascade the entire device

@@ -3,9 +3,16 @@
  * ------------------------------------------------------------------
  * Two request "identities" exist in this system:
  *
- *   1. THE HUMAN  - using the browser UI, no token required at all
- *      (there is no cloud login; the phone/device itself is the
- *      trust boundary, per the "no Google login" requirement).
+ *   1. THE HUMAN  - using the browser UI. Originally: no token
+ *      required at all (there is no cloud login; the phone/device
+ *      itself is the trust boundary, per the "no Google login"
+ *      requirement). THIS HAS PARTIALLY CHANGED, this session: see
+ *      requireDeviceSecret below and SECURITY.md §3b, which flagged
+ *      this exact gap as open until now. WRITE routes (create/delete
+ *      a project, delete-cascade the device, regenerate a token) now
+ *      require a device secret. READ routes (list/view projects,
+ *      activity, instructions) remain open -- the risk was always the
+ *      destructive actions, not visibility.
  *
  *   2. AN AI AGENT - an external process calling the API with
  *      `Authorization: Bearer <project-token>`. Must present a valid
@@ -31,11 +38,19 @@
  * against requireAIToken and loadProjectForHuman, both work correctly.
  * Leaving `await` in place costs nothing and means this file needs no
  * further change whenever store.js's storage layer actually changes.
+ *
+ * UPDATE (Session 4, later same session): store.js genuinely is
+ * Turso-backed now -- the "correction" above described a real, but
+ * since-resolved, mismatch. Left in place as a historical record
+ * rather than deleted, matching this file's own established practice
+ * of documenting past mismatches rather than silently erasing them
+ * once fixed (see routes/projects.js and its own regression history
+ * in KNOWN_ISSUES.md for why that practice exists).
  * ------------------------------------------------------------------
  */
 
 const store = require('../db/store');
-const { verifyToken, parseCompositeToken } = require('../utils/tokens');
+const { verifyToken, parseCompositeToken, generateDeviceCode, generateDeviceSecret, hashToken } = require('../utils/tokens');
 
 /** Extracts a Bearer token from the Authorization header, or null. */
 function extractBearer(req) {
@@ -139,4 +154,77 @@ async function loadProjectForHuman(req, res, next) {
   }
 }
 
-module.exports = { requireAIToken, loadProjectForHuman, extractBearer };
+/**
+ * SECURITY: gates human-facing WRITE routes (create/delete a project,
+ * delete-cascade the device, regenerate a token) behind a per-device
+ * secret, now that this app is moving toward a public deployment where
+ * "the device is the boundary" can no longer mean "anyone who can
+ * reach the server" (see SECURITY.md §3b, which flagged this exact
+ * gap as open and undecided until now).
+ *
+ * Deliberately NOT applied to read routes (list/view projects,
+ * activity, instructions) -- a human should be able to browse their
+ * own data without re-entering a secret on every page load; the risk
+ * this closes is destructive/costly actions, not visibility.
+ *
+ * Presented the same way AI tokens are: "X-Device-Secret: <raw secret>"
+ * header, compared via the same constant-time verifyToken/hashToken
+ * pair everything else in this file already uses -- not a new
+ * comparison mechanism, reusing the one already proven correct.
+ *
+ * LAZY CREATION, not fail-closed-on-missing -- this needed real
+ * thought, not just copying the AI-token pattern: server.js (local/
+ * Termux) runs as one long-lived process, so a boot-time creation
+ * step could work cleanly there. api/index.js (Vercel) has no
+ * equivalent "boot" moment a human would ever see -- each invocation
+ * is a per-request, potentially cold-started function, and Vercel's
+ * own logs aren't a channel a human necessarily has open the way a
+ * local terminal is. Failing closed here (a hard 503 until *something
+ * else* creates the secret) would mean the Vercel path could never
+ * actually succeed at all, since nothing else ever runs there first.
+ * So instead: if no secret exists yet when a write is first attempted,
+ * this middleware creates one on the spot (via
+ * store.getOrCreateDeviceSecretHash, which also handles the case
+ * where no device row exists at all yet -- see that function's own
+ * comment in store.js) and returns it directly in the 401 body (not
+ * just a generic "invalid secret" message) so the FIRST caller -- who,
+ * on a fresh install, is virtually certainly the human themselves,
+ * setting the app up for the first time -- gets it back immediately
+ * and can retry with it. Every subsequent caller without the correct
+ * secret gets the normal generic rejection, no secret value included.
+ */
+async function requireDeviceSecret(req, res, next) {
+  try {
+    const device = await store.getDevice();
+
+    if (!device || !device.deviceSecretHash) {
+      const { raw } = await store.getOrCreateDeviceSecretHash(
+        generateDeviceCode,
+        generateDeviceSecret,
+        hashToken
+      );
+      console.log('');
+      console.log('  A device secret was just created (first write request received).');
+      console.log('  Save this now -- it will not be shown again:');
+      console.log(`  ${raw}`);
+      console.log('');
+      return res.status(401).json({
+        error: 'No device secret existed yet, so one was just created. Save it now -- it will not be shown again -- and retry this request with "X-Device-Secret: <secret>".',
+        deviceSecret: raw,
+      });
+    }
+
+    const provided = req.headers['x-device-secret'];
+    if (!provided || !verifyToken(provided, device.deviceSecretHash)) {
+      return res.status(401).json({
+        error: 'Missing or invalid device secret. Provide "X-Device-Secret: <secret>".',
+      });
+    }
+
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { requireAIToken, loadProjectForHuman, extractBearer, requireDeviceSecret };

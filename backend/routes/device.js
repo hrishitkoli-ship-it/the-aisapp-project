@@ -31,6 +31,7 @@
 const express = require('express');
 const store = require('../db/store');
 const { humanSensitiveLimiter } = require('../middleware/rateLimit');
+const { requireDeviceSecret } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -58,7 +59,7 @@ router.get('/', async (req, res, next) => {
 // is deliberately rejected rather than treated as "confirmed by virtue
 // of calling the endpoint," since this is a wider blast radius than
 // deleting a single project.
-router.delete('/', humanSensitiveLimiter, async (req, res, next) => {
+router.delete('/', humanSensitiveLimiter, requireDeviceSecret, async (req, res, next) => {
   try {
     const { confirm } = req.body || {};
     if (confirm !== true) {
