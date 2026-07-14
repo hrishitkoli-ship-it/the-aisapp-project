@@ -439,6 +439,44 @@ exact limitation store.js's own author already disclosed. This needs a
 real "create a project, reload, confirm it persisted" check from
 whoever has real credentials before it's fully confirmed fixed.
 
+**Follow-up (same session): live-blocking bug found via a real
+screenshot of aisapp.vercel.app, not this sandbox** (can't reach the
+live URL at all, same network limitation as above -- this is the kind
+of thing only a person with an actual browser can catch). Session 4's
+new `requireDeviceSecret` middleware (see SECURITY.md §3b,
+`backend/middleware/auth.js`) is a real, well-reasoned security
+improvement -- gates write actions behind a per-device secret now that
+"the device is the boundary" no longer holds on a public deployment.
+It lazily creates a secret on the first-ever write and returns it once
+in the 401 body. But `frontend/js/projects.js` had zero code to read
+that field, show it, or retry -- every real user's first create/delete/
+regenerate attempt just showed a raw technical error with no way
+forward through the actual UI. Backend was doing the right thing; there
+was no frontend pathway to use it.
+
+Fixed: `api()` now proactively sends `X-Device-Secret` from localStorage
+on every request, and specifically detects the one-time-creation
+response shape (401 + `body.deviceSecret`) to show a reveal modal
+(mirrors `showTokenModal`'s exact safety properties -- no Escape, no
+tap-outside, focus trapped, since losing this before saving has the
+same permanent-loss consequence as an AI token), save it, and
+transparently retry the original request once. `deleteProject`/
+`regenerateToken` inherit this for free -- both are thin wrappers
+around the same `api()` function.
+
+Verified via a mocked-fetch jsdom test (the real backend needs a live
+Turso connection this sandbox can't reach, so this tests the frontend
+logic specifically, independent of that separately-confirmed-compatible
+but not-live-verified piece): 5/5 pass, including confirming exactly
+one retry happens (not a loop) and that a second independent write
+sends the header proactively with no modal shown a second time.
+
+The same screenshot also incidentally confirmed several previously-
+unverifiable-from-this-sandbox things actually work on the real
+production deployment: dark theme, PWA install hint, empty state
+copy, and the Vercel routing/static-serving setup from earlier in this
+session all render correctly on the live URL.
+
 ### Session 4 — Security & hardening review
 **Status: shipped, ongoing.** Audited `fileOps.js`/`store.js` path-safety,
 found and fixed the `projectDir()` traversal gap (Known Failure Signature
