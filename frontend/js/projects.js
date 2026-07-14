@@ -31,17 +31,34 @@
   // Tiny fetch wrapper -- consistent error shape across this module
   // -------------------------------------------------------------
 
-  async function api(path, options = {}) {
-    const res = await fetch(`${API_BASE}${path}`, {
-      headers: { 'Content-Type': 'application/json' },
-      ...options,
-    });
+  async function api(path, options = {}, _isRetry = false) {
+    const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+    const secret = getDeviceSecret();
+    if (secret) headers['X-Device-Secret'] = secret;
+
+    const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
     let body = null;
     try {
       body = await res.json();
     } catch {
       // Some responses (rare) may not be JSON; treat as empty.
     }
+
+    // First-ever write on this device/deployment: the server just
+    // minted a device secret and handed it back exactly once (see
+    // requireDeviceSecret's own comment in backend/middleware/auth.js
+    // for why it's lazy-created rather than failing closed). Show it,
+    // save it, then transparently retry the SAME request now that the
+    // header will be set -- the person only sees this modal once, the
+    // very first time they ever do something destructive on a given
+    // device, the same way a freshly created AI token is shown once.
+    // _isRetry guards against ever looping more than once.
+    if (res.status === 401 && body && body.deviceSecret && !_isRetry) {
+      setDeviceSecret(body.deviceSecret);
+      await showDeviceSecretModal(body.deviceSecret);
+      return api(path, options, true);
+    }
+
     if (!res.ok) {
       const message = (body && body.error) || `Request failed (${res.status})`;
       const err = new Error(message);
@@ -75,6 +92,27 @@
   function setCurrentProjectId(id) {
     if (id) localStorage.setItem(CURRENT_KEY, id);
     else localStorage.removeItem(CURRENT_KEY);
+  }
+
+  // -------------------------------------------------------------
+  // Local persistence: the per-device write-secret (see
+  // requireDeviceSecret in backend/middleware/auth.js). Unlike
+  // currentProjectId, this genuinely IS a secret -- localStorage is
+  // still the right place for it (same trust boundary as the device
+  // itself, matching this app's "no cloud login" design), but unlike
+  // currentProjectId this should never be logged, displayed after the
+  // one-time reveal, or sent anywhere except this app's own API.
+  // -------------------------------------------------------------
+
+  const DEVICE_SECRET_KEY = 'aihub:deviceSecret';
+
+  function getDeviceSecret() {
+    return localStorage.getItem(DEVICE_SECRET_KEY);
+  }
+
+  function setDeviceSecret(secret) {
+    if (secret) localStorage.setItem(DEVICE_SECRET_KEY, secret);
+    else localStorage.removeItem(DEVICE_SECRET_KEY);
   }
 
   // -------------------------------------------------------------
@@ -161,6 +199,81 @@
   // this whole lane: if the user doesn't copy it here, it's gone.
   // Mirrors GitHub's own PAT-creation UX intentionally.
   // -------------------------------------------------------------
+
+  // -------------------------------------------------------------
+  // Device secret reveal -- shown exactly once, the very first time
+  // any write is attempted on a device/deployment with no secret yet
+  // (see requireDeviceSecret in backend/middleware/auth.js). Same
+  // safety properties as showTokenModal below: no Escape, no
+  // tap-outside dismiss, focus trapped, since losing this before it's
+  // saved has the same "gone for good" consequence as an AI token --
+  // the server never shows it again, only the low-level curl-style
+  // retry-with-a-new-one path described in that middleware's comment.
+  //
+  // Returns a Promise that resolves once the person confirms they've
+  // saved it, so api()'s retry logic can await this before resending
+  // the original request with the header now set.
+  // -------------------------------------------------------------
+
+  function showDeviceSecretModal(secret) {
+    return new Promise((resolve) => {
+      const overlay = h('div', { class: 'aihub-modal-overlay' });
+
+      const copyBtn = h(
+        'button',
+        {
+          class: 'aihub-btn aihub-btn--primary aihub-icon-row',
+          onclick: async () => {
+            try {
+              await navigator.clipboard.writeText(secret);
+              copyBtn.innerHTML = '';
+              copyBtn.appendChild(window.AihubIcons.el('check', { size: 15 }));
+              copyBtn.appendChild(document.createTextNode('Copied'));
+              setTimeout(() => (copyBtn.textContent = 'Copy device secret'), 2000);
+            } catch {
+              copyBtn.textContent = 'Copy failed — select manually below';
+            }
+          },
+        },
+        'Copy device secret'
+      );
+
+      const doneBtn = h(
+        'button',
+        {
+          class: 'aihub-btn',
+          onclick: () => {
+            overlay.remove();
+            resolve();
+          },
+        },
+        "I've saved it"
+      );
+
+      const titleId = `aihub-device-secret-title-${Math.random().toString(36).slice(2, 9)}`;
+      const modal = h(
+        'div',
+        { class: 'aihub-modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId },
+        [
+          h('h2', { id: titleId }, 'Device secret created'),
+          h(
+            'p',
+            { class: 'aihub-modal-warning' },
+            'This device needed a write secret and one was just created. Copy it now — it will not be shown again. Losing it means you\u2019ll need to reset it from wherever this app\u2019s server logs are visible.'
+          ),
+          h('code', { class: 'aihub-token-display', tabindex: '0' }, secret),
+          h('div', { class: 'aihub-modal-actions' }, [copyBtn, doneBtn]),
+        ]
+      );
+
+      overlay.appendChild(modal);
+      document.body.appendChild(overlay);
+
+      // Same reasoning as showTokenModal: no Escape, no tap-outside.
+      trapFocus(modal);
+      modal.querySelector('.aihub-token-display').focus();
+    });
+  }
 
   function showTokenModal({ token, projectName, isRegeneration }) {
     const overlay = h('div', { class: 'aihub-modal-overlay' });
