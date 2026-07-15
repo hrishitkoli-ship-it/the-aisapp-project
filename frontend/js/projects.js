@@ -83,10 +83,11 @@
   // token. Safe to keep in localStorage.
   // -------------------------------------------------------------
 
-  const CURRENT_KEY = 'aihub:currentProjectId';
+  const CURRENT_KEY = 'aisapp:currentProjectId';
+  const CURRENT_KEY_OLD = 'aihub:currentProjectId'; // pre-rename key, see below
 
   function getCurrentProjectId() {
-    return localStorage.getItem(CURRENT_KEY);
+    return migrateKey(CURRENT_KEY_OLD, CURRENT_KEY);
   }
 
   function setCurrentProjectId(id) {
@@ -104,10 +105,31 @@
   // one-time reveal, or sent anywhere except this app's own API.
   // -------------------------------------------------------------
 
-  const DEVICE_SECRET_KEY = 'aihub:deviceSecret';
+  const DEVICE_SECRET_KEY = 'aisapp:deviceSecret';
+  const DEVICE_SECRET_KEY_OLD = 'aihub:deviceSecret'; // pre-rename key, see below
+
+  // One-time migration for the "aihub" -> "aisapp" naming rename: a
+  // browser that already has a value under the OLD key gets it copied
+  // to the NEW key (and the old one cleared) on first read after this
+  // ships, rather than silently losing it. This matters most for
+  // deviceSecret specifically -- losing it re-triggers the exact
+  // "missing or invalid device secret" wall this app just got a
+  // person unblocked from via a manual database reset; a bare rename
+  // with no migration would immediately undo that recovery for
+  // anyone who'd already saved a secret under the old key.
+  function migrateKey(oldKey, newKey) {
+    const current = localStorage.getItem(newKey);
+    if (current !== null) return current;
+    const legacy = localStorage.getItem(oldKey);
+    if (legacy !== null) {
+      localStorage.setItem(newKey, legacy);
+      localStorage.removeItem(oldKey);
+    }
+    return legacy;
+  }
 
   function getDeviceSecret() {
-    return localStorage.getItem(DEVICE_SECRET_KEY);
+    return migrateKey(DEVICE_SECRET_KEY_OLD, DEVICE_SECRET_KEY);
   }
 
   function setDeviceSecret(secret) {
@@ -184,9 +206,9 @@
   // -------------------------------------------------------------
 
   function showStatus(mountEl, message, kind = 'info') {
-    const existing = mountEl.querySelector('.aihub-status');
+    const existing = mountEl.querySelector('.aisapp-status');
     if (existing) existing.remove();
-    const el = h('div', { class: `aihub-status aihub-status--${kind}` }, message);
+    const el = h('div', { class: `aisapp-status aisapp-status--${kind}` }, message);
     mountEl.prepend(el);
     if (kind !== 'error') {
       setTimeout(() => el.remove(), 4000);
@@ -217,17 +239,17 @@
 
   function showDeviceSecretModal(secret) {
     return new Promise((resolve) => {
-      const overlay = h('div', { class: 'aihub-modal-overlay' });
+      const overlay = h('div', { class: 'aisapp-modal-overlay' });
 
       const copyBtn = h(
         'button',
         {
-          class: 'aihub-btn aihub-btn--primary aihub-icon-row',
+          class: 'aisapp-btn aisapp-btn--primary aisapp-icon-row',
           onclick: async () => {
             try {
               await navigator.clipboard.writeText(secret);
               copyBtn.innerHTML = '';
-              copyBtn.appendChild(window.AihubIcons.el('check', { size: 15 }));
+              copyBtn.appendChild(window.AisappIcons.el('check', { size: 15 }));
               copyBtn.appendChild(document.createTextNode('Copied'));
               setTimeout(() => (copyBtn.textContent = 'Copy device secret'), 2000);
             } catch {
@@ -241,7 +263,7 @@
       const doneBtn = h(
         'button',
         {
-          class: 'aihub-btn',
+          class: 'aisapp-btn',
           onclick: () => {
             overlay.remove();
             resolve();
@@ -250,19 +272,19 @@
         "I've saved it"
       );
 
-      const titleId = `aihub-device-secret-title-${Math.random().toString(36).slice(2, 9)}`;
+      const titleId = `aisapp-device-secret-title-${Math.random().toString(36).slice(2, 9)}`;
       const modal = h(
         'div',
-        { class: 'aihub-modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId },
+        { class: 'aisapp-modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId },
         [
           h('h2', { id: titleId }, 'Device secret created'),
           h(
             'p',
-            { class: 'aihub-modal-warning' },
+            { class: 'aisapp-modal-warning' },
             'This device needed a write secret and one was just created. Copy it now — it will not be shown again. Losing it means you\u2019ll need to reset it from wherever this app\u2019s server logs are visible.'
           ),
-          h('code', { class: 'aihub-token-display', tabindex: '0' }, secret),
-          h('div', { class: 'aihub-modal-actions' }, [copyBtn, doneBtn]),
+          h('code', { class: 'aisapp-token-display', tabindex: '0' }, secret),
+          h('div', { class: 'aisapp-modal-actions' }, [copyBtn, doneBtn]),
         ]
       );
 
@@ -271,22 +293,22 @@
 
       // Same reasoning as showTokenModal: no Escape, no tap-outside.
       trapFocus(modal);
-      modal.querySelector('.aihub-token-display').focus();
+      modal.querySelector('.aisapp-token-display').focus();
     });
   }
 
   function showTokenModal({ token, projectName, isRegeneration }) {
-    const overlay = h('div', { class: 'aihub-modal-overlay' });
+    const overlay = h('div', { class: 'aisapp-modal-overlay' });
 
     const copyBtn = h(
       'button',
       {
-        class: 'aihub-btn aihub-btn--primary aihub-icon-row',
+        class: 'aisapp-btn aisapp-btn--primary aisapp-icon-row',
         onclick: async () => {
           try {
             await navigator.clipboard.writeText(token);
             copyBtn.innerHTML = '';
-            copyBtn.appendChild(window.AihubIcons.el('check', { size: 15 }));
+            copyBtn.appendChild(window.AisappIcons.el('check', { size: 15 }));
             copyBtn.appendChild(document.createTextNode('Copied'));
             setTimeout(() => (copyBtn.textContent = 'Copy token'), 2000);
           } catch {
@@ -303,27 +325,27 @@
     const doneBtn = h(
       'button',
       {
-        class: 'aihub-btn',
+        class: 'aisapp-btn',
         onclick: () => overlay.remove(),
       },
       "I've copied it"
     );
 
-    const titleId = `aihub-token-title-${Math.random().toString(36).slice(2, 9)}`;
+    const titleId = `aisapp-token-title-${Math.random().toString(36).slice(2, 9)}`;
     const modal = h(
       'div',
-      { class: 'aihub-modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId },
+      { class: 'aisapp-modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId },
       [
         h('h2', { id: titleId }, isRegeneration ? 'New AI token generated' : `"${projectName}" created`),
         h(
           'p',
-          { class: 'aihub-modal-warning' },
+          { class: 'aisapp-modal-warning' },
           isRegeneration
             ? 'The previous token is now invalid. This new one is shown only once.'
             : 'This token is shown only once. Copy it now — there is no way to view it again, only regenerate a new one.'
         ),
-        h('code', { class: 'aihub-token-display', tabindex: '0' }, token),
-        h('div', { class: 'aihub-modal-actions' }, [copyBtn, doneBtn]),
+        h('code', { class: 'aisapp-token-display', tabindex: '0' }, token),
+        h('div', { class: 'aisapp-modal-actions' }, [copyBtn, doneBtn]),
       ]
     );
 
@@ -335,7 +357,7 @@
     // Escape/tap-outside dismissing a token they haven't saved would
     // be a real loss, so we deliberately don't wire that up.
     trapFocus(modal);
-    modal.querySelector('.aihub-token-display').focus();
+    modal.querySelector('.aisapp-token-display').focus();
   }
 
   // -------------------------------------------------------------
@@ -350,9 +372,9 @@
     // this (common on touchscreens) stacking two overlays before the
     // first one visually registers. Also a safe backstop against any
     // other modal already being open.
-    if (document.querySelector('.aihub-modal-overlay')) return;
+    if (document.querySelector('.aisapp-modal-overlay')) return;
 
-    const overlay = h('div', { class: 'aihub-modal-overlay' });
+    const overlay = h('div', { class: 'aisapp-modal-overlay' });
     let releaseFocusTrap = () => {};
 
     function close() {
@@ -365,12 +387,12 @@
       if (e.key === 'Escape') close();
     }
 
-    const cancelBtn = h('button', { class: 'aihub-btn', onclick: close }, 'Cancel');
+    const cancelBtn = h('button', { class: 'aisapp-btn', onclick: close }, 'Cancel');
 
     const confirmBtn = h(
       'button',
       {
-        class: 'aihub-btn aihub-btn--danger',
+        class: 'aisapp-btn aisapp-btn--danger',
         onclick: async () => {
           confirmBtn.disabled = true;
           confirmBtn.textContent = 'Working…';
@@ -387,14 +409,14 @@
       confirmLabel
     );
 
-    const titleId = `aihub-confirm-title-${Math.random().toString(36).slice(2, 9)}`;
+    const titleId = `aisapp-confirm-title-${Math.random().toString(36).slice(2, 9)}`;
     const modal = h(
       'div',
-      { class: 'aihub-modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId },
+      { class: 'aisapp-modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId },
       [
         h('h2', { id: titleId }, title),
         h('p', {}, body),
-        h('div', { class: 'aihub-modal-actions' }, [cancelBtn, confirmBtn]),
+        h('div', { class: 'aisapp-modal-actions' }, [cancelBtn, confirmBtn]),
       ]
     );
 
@@ -420,23 +442,23 @@
     const nameInput = h('input', {
       type: 'text',
       placeholder: 'Project name',
-      class: 'aihub-input',
+      class: 'aisapp-input',
       required: 'required',
       maxlength: '80',
     });
     const descInput = h('textarea', {
       placeholder: 'What is this project? (optional)',
-      class: 'aihub-input aihub-textarea',
+      class: 'aisapp-input aisapp-textarea',
       rows: '2',
       maxlength: '280',
     });
-    const submitBtn = h('button', { class: 'aihub-btn aihub-btn--primary', type: 'submit' }, 'Create project');
+    const submitBtn = h('button', { class: 'aisapp-btn aisapp-btn--primary', type: 'submit' }, 'Create project');
     let isSubmitting = false;
 
     const form = h(
       'form',
       {
-        class: 'aihub-create-form',
+        class: 'aisapp-create-form',
         onsubmit: async (e) => {
           e.preventDefault();
           if (isSubmitting) return; // guards a rapid double-tap beating the disabled state to the next event
@@ -477,23 +499,23 @@
     const selectBtn = h(
       'button',
       {
-        class: `aihub-project-card ${isCurrent ? 'aihub-project-card--current' : ''}`,
+        class: `aisapp-project-card ${isCurrent ? 'aisapp-project-card--current' : ''}`,
         onclick: () => onSelect(project.id),
       },
       [
-        h('div', { class: 'aihub-project-card-name' }, project.name),
+        h('div', { class: 'aisapp-project-card-name' }, project.name),
         project.description
-          ? h('div', { class: 'aihub-project-card-desc' }, project.description)
+          ? h('div', { class: 'aisapp-project-card-desc' }, project.description)
           : null,
-        h('div', { class: 'aihub-project-card-meta' }, `Created ${timeAgo(project.createdAt)}`),
-        isCurrent ? h('span', { class: 'aihub-badge' }, 'Current') : null,
+        h('div', { class: 'aisapp-project-card-meta' }, `Created ${timeAgo(project.createdAt)}`),
+        isCurrent ? h('span', { class: 'aisapp-badge' }, 'Current') : null,
       ]
     );
 
     const regenBtn = h(
       'button',
       {
-        class: 'aihub-icon-btn',
+        class: 'aisapp-icon-btn',
         title: 'Regenerate AI token',
         'aria-label': `Regenerate token for ${project.name}`,
         onclick: (e) => {
@@ -501,13 +523,13 @@
           onRegenerate(project);
         },
       },
-      window.AihubIcons.el('refresh', { size: 16 })
+      window.AisappIcons.el('refresh', { size: 16 })
     );
 
     const deleteBtn = h(
       'button',
       {
-        class: 'aihub-icon-btn aihub-icon-btn--danger',
+        class: 'aisapp-icon-btn aisapp-icon-btn--danger',
         title: 'Delete project',
         'aria-label': `Delete ${project.name}`,
         onclick: (e) => {
@@ -515,15 +537,15 @@
           onDelete(project);
         },
       },
-      window.AihubIcons.el('trash', { size: 16 })
+      window.AisappIcons.el('trash', { size: 16 })
     );
 
-    return h('div', { class: 'aihub-project-row' }, [selectBtn, regenBtn, deleteBtn]);
+    return h('div', { class: 'aisapp-project-row' }, [selectBtn, regenBtn, deleteBtn]);
   }
 
   async function renderProjectList(mountEl, listEl, currentId, callbacks) {
     clear(listEl);
-    listEl.appendChild(h('p', { class: 'aihub-loading-state' }, 'Loading projects…'));
+    listEl.appendChild(h('p', { class: 'aisapp-loading-state' }, 'Loading projects…'));
 
     let projects;
     try {
@@ -533,13 +555,13 @@
       const retryBtn = h(
         'button',
         {
-          class: 'aihub-btn aihub-btn--subtle',
+          class: 'aisapp-btn aisapp-btn--subtle',
           onclick: () => renderProjectList(mountEl, listEl, currentId, callbacks),
         },
         'Try again'
       );
       listEl.appendChild(
-        h('div', { class: 'aihub-error-state' }, [
+        h('div', { class: 'aisapp-error-state' }, [
           h('p', {}, `Couldn't load projects: ${err.message}`),
           retryBtn,
         ])
@@ -551,7 +573,7 @@
 
     if (projects.length === 0) {
       listEl.appendChild(
-        h('p', { class: 'aihub-empty-state' }, 'No projects yet. Create one above to get started.')
+        h('p', { class: 'aisapp-empty-state' }, 'No projects yet. Create one above to get started.')
       );
       return;
     }
@@ -581,7 +603,7 @@
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredInstallPrompt = e;
-    document.dispatchEvent(new CustomEvent('aihub:installavailable'));
+    document.dispatchEvent(new CustomEvent('aisapp:installavailable'));
   });
 
   function renderInstallHint(mountEl) {
@@ -599,7 +621,7 @@
 
     const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
 
-    const hint = h('div', { class: 'aihub-install-hint' });
+    const hint = h('div', { class: 'aisapp-install-hint' });
 
     function renderChromiumButton() {
       clear(hint);
@@ -607,7 +629,7 @@
         h(
           'button',
           {
-            class: 'aihub-btn aihub-btn--subtle aihub-icon-row',
+            class: 'aisapp-btn aisapp-btn--subtle aisapp-icon-row',
             onclick: async () => {
               if (!deferredInstallPrompt) return;
               deferredInstallPrompt.prompt();
@@ -616,7 +638,7 @@
               hint.remove();
             },
           },
-          [window.AihubIcons.el('device-download', { size: 16 }), 'Install this app']
+          [window.AisappIcons.el('device-download', { size: 16 }), 'Install this app']
         )
       );
     }
@@ -624,13 +646,13 @@
     if (deferredInstallPrompt) {
       renderChromiumButton();
     } else {
-      document.addEventListener('aihub:installavailable', renderChromiumButton, { once: true });
+      document.addEventListener('aisapp:installavailable', renderChromiumButton, { once: true });
       if (isIOS) {
         clear(hint);
         hint.appendChild(
           h(
             'p',
-            { class: 'aihub-install-hint-text' },
+            { class: 'aisapp-install-hint-text' },
             'Tip: tap the Share icon, then "Add to Home Screen" to install this app.'
           )
         );
@@ -656,12 +678,12 @@
       const installHint = renderInstallHint(mountEl);
       if (installHint) mountEl.appendChild(installHint);
 
-      mountEl.appendChild(h('h1', { class: 'aihub-page-title' }, 'Your projects'));
+      mountEl.appendChild(h('h1', { class: 'aisapp-page-title' }, 'Your projects'));
 
       const createForm = renderCreateForm(mountEl, () => refresh());
       mountEl.appendChild(createForm);
 
-      const listEl = h('div', { class: 'aihub-project-list' });
+      const listEl = h('div', { class: 'aisapp-project-list' });
       mountEl.appendChild(listEl);
 
       function selectProject(id) {
