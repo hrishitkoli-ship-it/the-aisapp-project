@@ -103,15 +103,15 @@
 
   function renderRow(entry) {
     if (entry.type === 'security_alert') {
-      return h('div', { class: 'aihub-activity-row aihub-activity-row--alert' }, [
-        window.AihubIcons.el('warning', { className: 'aihub-activity-icon', size: 17 }),
-        h('div', { class: 'aihub-activity-body' }, [
-          h('div', { class: 'aihub-activity-message' }, [
-            h('span', { class: 'aihub-activity-alert-tag' }, 'Security alert'),
+      return h('div', { class: 'aisapp-activity-row aisapp-activity-row--alert' }, [
+        window.AisappIcons.el('warning', { className: 'aisapp-activity-icon', size: 17 }),
+        h('div', { class: 'aisapp-activity-body' }, [
+          h('div', { class: 'aisapp-activity-message' }, [
+            h('span', { class: 'aisapp-activity-alert-tag' }, 'Security alert'),
             ' ',
             entry.message || 'Blocked request.',
           ]),
-          h('div', { class: 'aihub-activity-meta' }, [
+          h('div', { class: 'aisapp-activity-meta' }, [
             entry.actor ? h('span', {}, entry.actor) : null,
             entry.timestamp ? h('span', {}, timeAgo(entry.timestamp)) : null,
           ]),
@@ -121,13 +121,13 @@
 
     const meta = metaFor(entry.type);
     const iconEl = meta.icon
-      ? window.AihubIcons.el(meta.icon, { className: 'aihub-activity-icon', size: 17 })
-      : h('span', { class: 'aihub-activity-icon' }, '\u2022'); // plain bullet -- genuinely unrecognized type, not emoji
-    return h('div', { class: 'aihub-activity-row' }, [
+      ? window.AisappIcons.el(meta.icon, { className: 'aisapp-activity-icon', size: 17 })
+      : h('span', { class: 'aisapp-activity-icon' }, '\u2022'); // plain bullet -- genuinely unrecognized type, not emoji
+    return h('div', { class: 'aisapp-activity-row' }, [
       iconEl,
-      h('div', { class: 'aihub-activity-body' }, [
-        h('div', { class: 'aihub-activity-message' }, entry.message || meta.label),
-        h('div', { class: 'aihub-activity-meta' }, [
+      h('div', { class: 'aisapp-activity-body' }, [
+        h('div', { class: 'aisapp-activity-message' }, entry.message || meta.label),
+        h('div', { class: 'aisapp-activity-meta' }, [
           entry.actor ? h('span', {}, entry.actor) : null,
           entry.timestamp ? h('span', {}, timeAgo(entry.timestamp)) : null,
         ]),
@@ -149,21 +149,21 @@
     const limit = options.limit || DEFAULT_LIMIT;
     const pollMs = options.pollMs === 0 ? 0 : options.pollMs || DEFAULT_POLL_MS;
 
-    const container = h('div', { class: 'aihub-activity' });
-    const header = h('div', { class: 'aihub-activity-header' }, [
-      h('h2', { class: 'aihub-section-title' }, options.title || 'Activity'),
+    const container = h('div', { class: 'aisapp-activity' });
+    const header = h('div', { class: 'aisapp-activity-header' }, [
+      h('h2', { class: 'aisapp-section-title' }, options.title || 'Activity'),
       h(
         'button',
         {
-          class: 'aihub-icon-btn',
+          class: 'aisapp-icon-btn',
           title: 'Refresh',
           'aria-label': 'Refresh activity',
           onclick: () => refresh(),
         },
-        window.AihubIcons.el('refresh', { size: 16 })
+        window.AisappIcons.el('refresh', { size: 16 })
       ),
     ]);
-    const listEl = h('div', { class: 'aihub-activity-list' });
+    const listEl = h('div', { class: 'aisapp-activity-list' });
 
     container.appendChild(header);
     container.appendChild(listEl);
@@ -187,7 +187,7 @@
         clear(listEl);
         if (!entries || entries.length === 0) {
           listEl.appendChild(
-            h('p', { class: 'aihub-empty-state' }, 'No activity yet.')
+            h('p', { class: 'aisapp-empty-state' }, 'No activity yet.')
           );
           return;
         }
@@ -202,11 +202,11 @@
         if (!listEl.firstChild) {
           clear(listEl);
           listEl.appendChild(
-            h('div', { class: 'aihub-error-state' }, [
+            h('div', { class: 'aisapp-error-state' }, [
               h('p', {}, `Couldn't load activity: ${err.message}`),
               h(
                 'button',
-                { class: 'aihub-btn aihub-btn--subtle', onclick: () => refresh() },
+                { class: 'aisapp-btn aisapp-btn--subtle', onclick: () => refresh() },
                 'Try again'
               ),
             ])
