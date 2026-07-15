@@ -87,9 +87,9 @@
   }
 
   function statusDotClass(session) {
-    if (isStale(session)) return 'aihub-status-dot--stale';
-    if (session.status === 'active') return 'aihub-status-dot--active';
-    return 'aihub-status-dot--idle';
+    if (isStale(session)) return 'aisapp-status-dot--stale';
+    if (session.status === 'active') return 'aisapp-status-dot--active';
+    return 'aisapp-status-dot--idle';
   }
 
   function statusLabel(session) {
@@ -114,29 +114,29 @@
     // last-in-first-out as they arrived from the backend.
     const ordered = [...pending, ...rest];
 
-    return h('div', { class: 'aihub-roster-queue' }, [
-      h('div', { class: 'aihub-roster-queue-label' }, [
+    return h('div', { class: 'aisapp-roster-queue' }, [
+      h('div', { class: 'aisapp-roster-queue-label' }, [
         `Task queue`,
         pending.length > 0
-          ? h('span', { class: 'aihub-badge aihub-badge--count' }, String(pending.length))
+          ? h('span', { class: 'aisapp-badge aisapp-badge--count' }, String(pending.length))
           : null,
       ]),
       h(
         'ul',
-        { class: 'aihub-roster-queue-list' },
+        { class: 'aisapp-roster-queue-list' },
         ordered.map((r) =>
           h(
             'li',
             {
-              class: `aihub-roster-queue-item ${
-                r.status === 'pending' ? 'aihub-roster-queue-item--pending' : 'aihub-roster-queue-item--done'
+              class: `aisapp-roster-queue-item ${
+                r.status === 'pending' ? 'aisapp-roster-queue-item--pending' : 'aisapp-roster-queue-item--done'
               }`,
             },
             [
-              h('span', { class: 'aihub-roster-queue-from' }, r.fromLabel || r.fromSessionId || '?'),
-              h('span', { class: 'aihub-roster-queue-msg' }, r.message),
+              h('span', { class: 'aisapp-roster-queue-from' }, r.fromLabel || r.fromSessionId || '?'),
+              h('span', { class: 'aisapp-roster-queue-msg' }, r.message),
               r.priority && r.priority !== 'normal'
-                ? h('span', { class: `aihub-badge aihub-badge--priority-${r.priority}` }, r.priority)
+                ? h('span', { class: `aisapp-badge aisapp-badge--priority-${r.priority}` }, r.priority)
                 : null,
             ]
           )
@@ -150,26 +150,26 @@
   // -------------------------------------------------------------
 
   function renderSessionCard(session) {
-    return h('div', { class: 'aihub-roster-card' }, [
-      h('div', { class: 'aihub-roster-card-top' }, [
-        h('span', { class: `aihub-status-dot ${statusDotClass(session)}`, 'aria-hidden': 'true' }),
-        h('div', { class: 'aihub-roster-card-title' }, [
-          h('span', { class: 'aihub-roster-card-label' }, session.label || session.id),
-          h('span', { class: 'aihub-roster-card-status' }, statusLabel(session)),
+    return h('div', { class: 'aisapp-roster-card' }, [
+      h('div', { class: 'aisapp-roster-card-top' }, [
+        h('span', { class: `aisapp-status-dot ${statusDotClass(session)}`, 'aria-hidden': 'true' }),
+        h('div', { class: 'aisapp-roster-card-title' }, [
+          h('span', { class: 'aisapp-roster-card-label' }, session.label || session.id),
+          h('span', { class: 'aisapp-roster-card-status' }, statusLabel(session)),
         ]),
       ]),
       session.function
-        ? h('div', { class: 'aihub-roster-card-row' }, [
-            h('span', { class: 'aihub-roster-card-field' }, 'Function'),
+        ? h('div', { class: 'aisapp-roster-card-row' }, [
+            h('span', { class: 'aisapp-roster-card-field' }, 'Function'),
             h('span', {}, session.function),
           ])
         : null,
-      h('div', { class: 'aihub-roster-card-row' }, [
-        h('span', { class: 'aihub-roster-card-field' }, 'Current task'),
-        h('span', { class: 'aihub-roster-card-task' }, session.currentTask || 'Idle'),
+      h('div', { class: 'aisapp-roster-card-row' }, [
+        h('span', { class: 'aisapp-roster-card-field' }, 'Current task'),
+        h('span', { class: 'aisapp-roster-card-task' }, session.currentTask || 'Idle'),
       ]),
       renderTaskQueue(session.taskQueue),
-      h('div', { class: 'aihub-roster-card-meta' }, [
+      h('div', { class: 'aisapp-roster-card-meta' }, [
         session.lastSeenAt ? `Last seen ${timeAgo(session.lastSeenAt)}` : null,
         session.registeredAt ? ` \u00B7 registered ${timeAgo(session.registeredAt)}` : null,
       ]),
@@ -189,26 +189,26 @@
     init(mountEl, projectId) {
       clear(mountEl);
 
-      mountEl.appendChild(h('h1', { class: 'aihub-page-title' }, 'AI Session Roster'));
+      mountEl.appendChild(h('h1', { class: 'aisapp-page-title' }, 'AI Session Roster'));
       mountEl.appendChild(
         h(
           'p',
-          { class: 'aihub-page-subtitle' },
+          { class: 'aisapp-page-subtitle' },
           'Read-only \u2014 this reflects what each AI session reports about itself. There\u2019s nothing to approve or edit here.'
         )
       );
 
-      const headerRow = h('div', { class: 'aihub-roster-header' }, [
-        h('span', { class: 'aihub-roster-count', id: 'aihub-roster-count' }, ''),
+      const headerRow = h('div', { class: 'aisapp-roster-header' }, [
+        h('span', { class: 'aisapp-roster-count', id: 'aisapp-roster-count' }, ''),
         h(
           'button',
-          { class: 'aihub-btn aihub-btn--subtle', onclick: () => refresh() },
+          { class: 'aisapp-btn aisapp-btn--subtle', onclick: () => refresh() },
           'Refresh'
         ),
       ]);
       mountEl.appendChild(headerRow);
 
-      const listEl = h('div', { class: 'aihub-roster-list' });
+      const listEl = h('div', { class: 'aisapp-roster-list' });
       mountEl.appendChild(listEl);
 
       let destroyed = false;
@@ -218,7 +218,7 @@
       async function refresh() {
         if (destroyed || inFlight) return;
         inFlight = true;
-        const countEl = headerRow.querySelector('#aihub-roster-count');
+        const countEl = headerRow.querySelector('#aisapp-roster-count');
         try {
           const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/sessions`);
           if (!res.ok) throw new Error(`Request failed (${res.status})`);
@@ -238,7 +238,7 @@
             listEl.appendChild(
               h(
                 'p',
-                { class: 'aihub-empty-state' },
+                { class: 'aisapp-empty-state' },
                 'No AI sessions have registered yet. They\u2019ll show up here as soon as one calls POST /api/ai/:projectId/sessions.'
               )
             );
@@ -263,11 +263,11 @@
           if (!listEl.firstChild) {
             clear(listEl);
             listEl.appendChild(
-              h('div', { class: 'aihub-error-state' }, [
+              h('div', { class: 'aisapp-error-state' }, [
                 h('p', {}, `Couldn't load sessions: ${err.message}`),
                 h(
                   'button',
-                  { class: 'aihub-btn aihub-btn--subtle', onclick: () => refresh() },
+                  { class: 'aisapp-btn aisapp-btn--subtle', onclick: () => refresh() },
                   'Try again'
                 ),
               ])
