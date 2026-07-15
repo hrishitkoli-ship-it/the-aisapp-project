@@ -1,11 +1,11 @@
 ---
-name: aisapp
-description: "Connect to and work productively inside a running Aisapp instance (a project management and code storage hub for coordinating a human and multiple AI coding agents). Covers: presenting your project token correctly, registering in the AI Session Roster, reading/writing project files through the conflict-safe API, requesting work from other AI sessions working the same project, proposing (never self-approving) function assignments, and understanding the permanent device code embedded in every token. Use this whenever you've been given a project URL + AI token for this app and need to know how to authenticate, what the endpoints are, and what the human-approval boundaries are before you start."
+name: ai-collab-hub
+description: "Connect to and work productively inside a running AI-Collaborative Project Management & Code Storage Hub instance. Covers: presenting your project token correctly, registering in the AI Session Roster, reading/writing project files through the conflict-safe API, requesting work from other AI sessions working the same project, proposing (never self-approving) function assignments, and understanding the permanent device code embedded in every token. Use this whenever you've been given a project URL + AI token for this app and need to know how to authenticate, what the endpoints are, and what the human-approval boundaries are before you start."
 ---
 
-# Aisapp — Agent Guide
+# AI-Collaborative Hub — Agent Guide
 
-You are an AI agent that has been given access to a project running on **Aisapp** — a project management and code storage hub for coordinating a human and multiple AI coding agents. A human has shared a **project URL** (something like `https://your-deployment.vercel.app` or `http://localhost:7077`) and an **AI token** with you. This skill tells you how to use both correctly.
+You are an AI agent that has been given access to a project running on the **AI-Collaborative Project Management & Code Storage Hub** — a local-first, multi-AI-session tool. A human has shared a **project URL** (something like `http://192.168.x.x:7077` or `http://localhost:7077`) and an **AI token** with you. This skill tells you how to use both correctly.
 
 **Read this before making your first request.** The permission model here is stricter than it looks, and getting a couple of things wrong (skipping session registration, trying to self-approve an assignment, ignoring a write conflict) will produce confusing errors or — worse — silently create a bad experience for the human and any other AI sessions sharing this project.
 
@@ -16,18 +16,18 @@ You are an AI agent that has been given access to a project running on **Aisapp*
 Your token looks like this:
 
 ```
-aihub_<12-char code><rest of the key>
+aisapp_<12-char code><rest of the key>
 ```
 
-Example: `aihub_GyttCl3KHRvCW38Z66a2ClnvPrs0fcV4YIMyxdmty-c3GbtL4Wm5ewU`
+Example: `aisapp_GyttCl3KHRvCW38Z66a2ClnvPrs0fcV4YIMyxdmty-c3GbtL4Wm5ewU`
 
-- The **first 12 characters after `aihub_`** are the human's permanent **device code**. It is the same across every project that human creates on their device, and it never changes unless the human deliberately deletes their device identity (which deletes every project too — see §7).
+- The **first 12 characters after `aisapp_`** are the human's permanent **device code**. It is the same across every project that human creates on their device, and it never changes unless the human deliberately deletes their device identity (which deletes every project too — see §7).
 - **Everything after those 12 characters** is a rotatable key, unique to this one project. If the human regenerates this project's token, only this part changes — your old token stops working immediately, and you'll need the new one from them.
 - The device code is **not a secret you should try to parse out and rely on for anything** — treat the whole token as one opaque credential. It's documented here so you understand why two different projects' tokens might visibly share a prefix; that's expected, not a bug, and not something to flag to the human as an error.
 
 **Present it on every AI-facing request as:**
 ```
-Authorization: Bearer aihub_GyttCl3KHRvCW38Z66a2ClnvPrs0fcV4YIMyxdmty-c3GbtL4Wm5ewU
+Authorization: Bearer aisapp_GyttCl3KHRvCW38Z66a2ClnvPrs0fcV4YIMyxdmty-c3GbtL4Wm5ewU
 ```
 
 A token is scoped to exactly one project. If you're working across multiple projects for the same human, you'll have a different full token for each one (sharing the same 12-char prefix).
