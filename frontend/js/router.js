@@ -77,18 +77,18 @@
 
   function renderThemeToggleButton() {
     const btn = document.createElement('button');
-    btn.className = 'aihub-theme-toggle';
+    btn.className = 'aisapp-theme-toggle';
     btn.type = 'button';
     btn.setAttribute('aria-label', 'Toggle dark and light theme');
     const updateIcon = () => {
-      btn.innerHTML = window.AihubIcons.svg(
-        window.AihubTheme.current() === 'light' ? 'sun' : 'moon',
+      btn.innerHTML = window.AisappIcons.svg(
+        window.AisappTheme.current() === 'light' ? 'sun' : 'moon',
         { size: 17 }
       );
     };
     updateIcon();
     btn.addEventListener('click', () => {
-      window.AihubTheme.toggle();
+      window.AisappTheme.toggle();
       updateIcon();
     });
     return btn;
@@ -98,8 +98,8 @@
     appHeader.classList.remove('is-hidden');
     appHeader.innerHTML = '';
     const title = document.createElement('div');
-    title.className = 'aihub-header-title';
-    title.textContent = 'Aisapp';
+    title.className = 'aisapp-header-title';
+    title.textContent = 'AI Collaborative Hub';
     appHeader.appendChild(title);
     appHeader.appendChild(renderThemeToggleButton());
   }
@@ -109,17 +109,17 @@
     appHeader.innerHTML = '';
 
     const backBtn = document.createElement('button');
-    backBtn.className = 'aihub-header-back';
+    backBtn.className = 'aisapp-header-back';
     backBtn.type = 'button';
     backBtn.setAttribute('aria-label', 'Back to projects');
-    backBtn.innerHTML = window.AihubIcons.svg('chevron-left', { size: 20 });
+    backBtn.innerHTML = window.AisappIcons.svg('chevron-left', { size: 20 });
     backBtn.addEventListener('click', () => navigateTo('#/'));
     appHeader.appendChild(backBtn);
 
     const titleWrap = document.createElement('div');
-    titleWrap.className = 'aihub-header-title';
+    titleWrap.className = 'aisapp-header-title';
     const eyebrow = document.createElement('span');
-    eyebrow.className = 'aihub-header-eyebrow';
+    eyebrow.className = 'aisapp-header-eyebrow';
     eyebrow.textContent = 'Project';
     titleWrap.appendChild(eyebrow);
     const nameSpan = document.createElement('span');
@@ -144,13 +144,13 @@
     appTabbar.innerHTML = '';
     for (const tab of TABS) {
       const btn = document.createElement('button');
-      btn.className = `aihub-tab${tab.key === activePage ? ' is-active' : ''}`;
+      btn.className = `aisapp-tab${tab.key === activePage ? ' is-active' : ''}`;
       btn.type = 'button';
       btn.setAttribute('aria-current', tab.key === activePage ? 'page' : 'false');
       const icon = document.createElement('span');
-      icon.className = 'aihub-tab-icon';
+      icon.className = 'aisapp-tab-icon';
       icon.setAttribute('aria-hidden', 'true');
-      icon.innerHTML = window.AihubIcons.svg(tab.icon, { size: 19 });
+      icon.innerHTML = window.AisappIcons.svg(tab.icon, { size: 19 });
       const label = document.createElement('span');
       label.textContent = tab.label;
       btn.appendChild(icon);
@@ -193,10 +193,10 @@
   function renderNotYetBuilt(pageLabel) {
     appMount.innerHTML = '';
     const panel = document.createElement('div');
-    panel.className = 'aihub-panel';
+    panel.className = 'aisapp-panel';
     panel.style.textAlign = 'center';
-    panel.style.color = 'var(--aihub-text-dim)';
-    panel.innerHTML = `<p style="margin:0 0 4px;font-weight:600;color:var(--aihub-text)">${pageLabel}</p><p style="margin:0;font-size:0.85rem">This page's script didn't load -- check the browser console.</p>`;
+    panel.style.color = 'var(--aisapp-text-dim)';
+    panel.innerHTML = `<p style="margin:0 0 4px;font-weight:600;color:var(--aisapp-text)">${pageLabel}</p><p style="margin:0;font-size:0.85rem">This page's script didn't load -- check the browser console.</p>`;
     appMount.appendChild(panel);
   }
 
@@ -222,11 +222,11 @@
     renderTabbar(route.projectId, route.page);
 
     if (route.page === 'workspace') {
-      if (window.AihubWorkspace) {
+      if (window.AisappWorkspace) {
         // workspace.js manages its own state on repeated mount() calls
         // and has no polling to tear down, so it doesn't return/need a
         // destroy-style controller the way roster/instructions do.
-        window.AihubWorkspace.mount(appMount, route.projectId);
+        window.AisappWorkspace.mount(appMount, route.projectId);
       } else {
         renderNotYetBuilt('Workspace');
       }
