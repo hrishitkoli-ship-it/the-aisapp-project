@@ -2,14 +2,14 @@
  * workspace.css
  * ------------------------------------------------------------------
  * Session 1 lane. Styles specific to the Workspace page (file tree +
- * editor + conflict diff). Shared component classes (.aihub-btn,
- * .aihub-status, .aihub-modal, .aihub-empty-state) already exist in
+ * editor + conflict diff). Shared component classes (.aisapp-btn,
+ * .aisapp-status, .aisapp-modal, .aisapp-empty-state) already exist in
  * projects.css -- this file only adds what's genuinely new here,
- * using the same --aihub-* tokens from base.css throughout.
+ * using the same --aisapp-* tokens from base.css throughout.
  * ------------------------------------------------------------------
  */
 
-.aihub-ws-toolbar {
+.aisapp-ws-toolbar {
   display: flex;
   gap: 8px;
   margin-bottom: 12px;
@@ -17,22 +17,22 @@
 
 /* ---- File tree ---- */
 
-.aihub-ws-tree-panel {
+.aisapp-ws-tree-panel {
   padding: 6px;
 }
 
-.aihub-tree-level {
+.aisapp-tree-level {
   display: flex;
   flex-direction: column;
 }
 
-.aihub-tree-row {
+.aisapp-tree-row {
   display: flex;
   align-items: center;
   gap: 6px;
   background: transparent;
   border: none;
-  color: var(--aihub-text);
+  color: var(--aisapp-text);
   text-align: left;
   padding: 8px 10px;
   font-size: 0.9rem;
@@ -43,28 +43,28 @@
   transition: background-color 0.12s ease, color 0.12s ease;
 }
 
-.aihub-tree-row:hover,
-.aihub-tree-row:focus-visible {
-  background: var(--aihub-surface-raised);
+.aisapp-tree-row:hover,
+.aisapp-tree-row:focus-visible {
+  background: var(--aisapp-surface-raised);
 }
 
-.aihub-tree-row--file.is-selected {
-  background: var(--aihub-accent-dim);
-  color: var(--aihub-accent);
+.aisapp-tree-row--file.is-selected {
+  background: var(--aisapp-accent-dim);
+  color: var(--aisapp-accent);
 }
 
-.aihub-tree-caret {
-  color: var(--aihub-text-dim);
+.aisapp-tree-caret {
+  color: var(--aisapp-text-dim);
   width: 12px;
   flex-shrink: 0;
   font-size: 0.75rem;
 }
 
-.aihub-tree-icon {
+.aisapp-tree-icon {
   flex-shrink: 0;
 }
 
-.aihub-tree-name {
+.aisapp-tree-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -72,57 +72,57 @@
 
 /* ---- Editor ---- */
 
-.aihub-ws-editor {
+.aisapp-ws-editor {
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
 }
 
-.aihub-ws-editor-header {
+.aisapp-ws-editor-header {
   display: flex;
   align-items: center;
   gap: 10px;
   margin-bottom: 10px;
 }
 
-.aihub-ws-editor-path {
-  color: var(--aihub-text-dim);
+.aisapp-ws-editor-path {
+  color: var(--aisapp-text-dim);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 0.85rem;
 }
 
-.aihub-ws-editor-body {
+.aisapp-ws-editor-body {
   display: flex;
-  background: var(--aihub-surface);
-  border: 1px solid var(--aihub-border);
-  border-radius: var(--aihub-radius);
+  background: var(--aisapp-surface);
+  border: 1px solid var(--aisapp-border);
+  border-radius: var(--aisapp-radius);
   overflow: hidden;
   height: 55vh;
   min-height: 280px;
 }
 
-.aihub-ws-gutter {
+.aisapp-ws-gutter {
   flex-shrink: 0;
   padding: 10px 8px;
   text-align: right;
-  color: var(--aihub-text-dim);
-  background: var(--aihub-surface-raised);
-  border-right: 1px solid var(--aihub-border);
+  color: var(--aisapp-text-dim);
+  background: var(--aisapp-surface-raised);
+  border-right: 1px solid var(--aisapp-border);
   overflow-y: hidden;
   font-size: 0.85rem;
   line-height: 1.5;
   user-select: none;
 }
 
-.aihub-ws-textarea {
+.aisapp-ws-textarea {
   flex: 1;
   min-width: 0;
   border: none;
   background: transparent;
-  color: var(--aihub-text);
+  color: var(--aisapp-text);
   padding: 10px 12px;
   font-size: 0.85rem;
   line-height: 1.5;
@@ -136,92 +136,65 @@
   overflow: auto;
 }
 
-.aihub-ws-editor-actions {
+.aisapp-ws-editor-actions {
   display: flex;
   gap: 8px;
   margin-top: 10px;
 }
 
-.aihub-ws-editor-actions .aihub-btn--danger {
+.aisapp-ws-editor-actions .aisapp-btn--danger {
   margin-left: auto;
 }
 
 /* ---- Conflict diff ---- */
 
-.aihub-modal--wide {
+.aisapp-modal--wide {
   max-width: 640px;
 }
 
-.aihub-diff {
-  background: var(--aihub-surface-raised);
-  border: 1px solid var(--aihub-border);
+.aisapp-diff {
+  background: var(--aisapp-surface-raised);
+  border: 1px solid var(--aisapp-border);
   border-radius: 8px;
   padding: 8px 0;
   max-height: 40vh;
   overflow-y: auto;
   margin-bottom: 14px;
-  font-family: var(--aihub-font-mono);
+  font-family: var(--aisapp-font-mono);
   font-size: 0.78rem;
   line-height: 1.5;
 }
 
-.aihub-diff-line {
+.aisapp-diff-line {
   padding: 0 10px;
   white-space: pre-wrap;
   word-break: break-all;
 }
 
-.aihub-diff-line--added {
-  background: var(--aihub-success-dim);
-  color: var(--aihub-success);
+.aisapp-diff-line--added {
+  background: var(--aisapp-success-dim);
+  color: var(--aisapp-success);
 }
 
-.aihub-diff-line--removed {
-  background: var(--aihub-danger-dim);
-  color: var(--aihub-danger);
+.aisapp-diff-line--removed {
+  background: var(--aisapp-danger-dim);
+  color: var(--aisapp-danger);
 }
 
-.aihub-diff-line--same {
-  color: var(--aihub-text-dim);
+.aisapp-diff-line--same {
+  color: var(--aisapp-text-dim);
 }
 
-.aihub-diff-line--collapsed {
-  color: var(--aihub-text-dim);
+.aisapp-diff-line--collapsed {
+  color: var(--aisapp-text-dim);
   text-align: center;
   opacity: 0.6;
 }
 
-.aihub-diff-toolong {
+.aisapp-diff-toolong {
   padding: 10px 14px;
   margin: 0;
-  color: var(--aihub-text-dim);
-  font-family: var(--aihub-font-body);
+  color: var(--aisapp-text-dim);
+  font-family: var(--aisapp-font-body);
   font-size: 0.85rem;
-}
-
-/* ---- New File/Folder dialog (File/Folder mode toggle) ---- */
-
-.aihub-toggle-row {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.aihub-btn--toggle {
-  flex: 1;
-  border: 1px solid var(--aihub-border);
-  background: var(--aihub-surface);
-  color: var(--aihub-text-dim);
-}
-
-.aihub-btn--toggle-active {
-  border-color: var(--aihub-accent);
-  background: var(--aihub-accent-dim);
-  color: var(--aihub-accent);
-}
-
-.aihub-modal-hint {
-  margin: 8px 0 0;
-  font-size: 0.8rem;
-  color: var(--aihub-text-dim);
 }
