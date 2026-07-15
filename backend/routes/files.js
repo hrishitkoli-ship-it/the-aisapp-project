@@ -13,15 +13,23 @@
  * behavior (conflict checks, activity logging, path safety) can't
  * drift between the two callers.
  *
- * CHANGED: fileOps.js is now Postgres-backed and every one of its
- * functions is async, and takes `projectId` directly instead of a
- * filesystem directory path (there's no `store.projectFilesDir()`
- * anymore -- see db/store.js/fileOps.js headers for why). Every
- * handler below was already async except handleListTree, which
- * needed both `async` added AND its previously-uncaught body wrapped
- * in try/catch, since it's the one handler here that had no error
- * handling at all in the original (its try/catch only existed around
- * res.json, not around the store call).
+ * CORRECTED (Session 4): this previously said "Postgres-backed" -- not
+ * accurate. store.js is Turso (libSQL)-backed, confirmed extensively
+ * throughout this session's own work on it (schema.sql, the device-
+ * secret column addition, the octet_length() fix in fileOps.js just
+ * above this file). Same class of stale-comment mismatch as Known
+ * Failure Signature #6 in INSTRUCTIONS.md -- fixing it here rather
+ * than leaving it, since an incorrect claim about the datastore is
+ * exactly the kind of thing that misleads whoever reads this file
+ * next. Every one of fileOps.js's functions is async and takes
+ * `projectId` directly instead of a filesystem directory path
+ * (there's no `store.projectFilesDir()` anymore -- see
+ * db/store.js/fileOps.js headers for why). Every handler below was
+ * already async except handleListTree, which needed both `async`
+ * added AND its previously-uncaught body wrapped in try/catch, since
+ * it's the one handler here that had no error handling at all in the
+ * original (its try/catch only existed around res.json, not around
+ * the store call).
  * ------------------------------------------------------------------
  */
 
