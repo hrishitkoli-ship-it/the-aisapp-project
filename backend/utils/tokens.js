@@ -5,7 +5,7 @@
  * device's permanent identity code, and the content-encryption key
  * bundled into the final composite token.
  *
- * Full format: aihub_<12-char deviceCode>_<32 random chars>.<encryptionKeyB64url>
+ * Full format: aisapp_<12-char deviceCode>_<32 random chars>.<encryptionKeyB64url>
  *
  * Two independent layers, deliberately not entangled:
  *
@@ -17,7 +17,7 @@
  *    what's otherwise just "the auth token" -- exactly per the
  *    original design: the device code is NOT parsed back out for
  *    verification. verifyToken hashes and compares the WHOLE
- *    aihub_<deviceCode>_<random> string as one opaque unit. It's a
+ *    aisapp_<deviceCode>_<random> string as one opaque unit. It's a
  *    fixed, human-recognizable prefix (so someone glancing at two
  *    tokens can tell they came from the same device), not a
  *    machine-parsed field.
@@ -45,7 +45,7 @@
 
 const crypto = require('crypto');
 
-const TOKEN_PREFIX = 'aihub_';
+const TOKEN_PREFIX = 'aisapp_';
 const DEVICE_CODE_LENGTH = 12; // matches "permanent 12-char code" in db/store.js
 
 /**
@@ -87,7 +87,7 @@ function hashToken(token) {
  *
  * DELIBERATELY NOT the same value as generateDeviceCode above: the
  * device code is embedded inside every AI project token
- * (aihub_<deviceCode>_<random>) and has therefore already been shared
+ * (aisapp_<deviceCode>_<random>) and has therefore already been shared
  * with every AI agent the human has ever handed a project token to.
  * Reusing it as the human's own write-gate secret would mean any AI
  * agent with a valid token could trivially derive the credential meant
