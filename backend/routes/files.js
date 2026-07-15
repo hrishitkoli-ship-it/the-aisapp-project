@@ -13,23 +13,15 @@
  * behavior (conflict checks, activity logging, path safety) can't
  * drift between the two callers.
  *
- * CORRECTED (Session 4): this previously said "Postgres-backed" -- not
- * accurate. store.js is Turso (libSQL)-backed, confirmed extensively
- * throughout this session's own work on it (schema.sql, the device-
- * secret column addition, the octet_length() fix in fileOps.js just
- * above this file). Same class of stale-comment mismatch as Known
- * Failure Signature #6 in INSTRUCTIONS.md -- fixing it here rather
- * than leaving it, since an incorrect claim about the datastore is
- * exactly the kind of thing that misleads whoever reads this file
- * next. Every one of fileOps.js's functions is async and takes
- * `projectId` directly instead of a filesystem directory path
- * (there's no `store.projectFilesDir()` anymore -- see
- * db/store.js/fileOps.js headers for why). Every handler below was
- * already async except handleListTree, which needed both `async`
- * added AND its previously-uncaught body wrapped in try/catch, since
- * it's the one handler here that had no error handling at all in the
- * original (its try/catch only existed around res.json, not around
- * the store call).
+ * CHANGED: fileOps.js is now Postgres-backed and every one of its
+ * functions is async, and takes `projectId` directly instead of a
+ * filesystem directory path (there's no `store.projectFilesDir()`
+ * anymore -- see db/store.js/fileOps.js headers for why). Every
+ * handler below was already async except handleListTree, which
+ * needed both `async` added AND its previously-uncaught body wrapped
+ * in try/catch, since it's the one handler here that had no error
+ * handling at all in the original (its try/catch only existed around
+ * res.json, not around the store call).
  * ------------------------------------------------------------------
  */
 
@@ -89,6 +81,24 @@ async function handleWriteFile(req, res) {
 
   if (typeof content !== 'string') {
     return res.status(400).json({ error: '"content" (string) is required.' });
+  }
+
+  // TOS GATE: must be accepted (once, ever, per device -- see the
+  // Settings page) before this device can write ANY file content,
+  // AI-agent or human. Checked here rather than only client-side so
+  // it can't be bypassed by an AI agent calling the API directly
+  // without ever loading the frontend. req.project.deviceCode is
+  // always present for any project created after device identity
+  // landed (routes/projects.js sets it at creation time); a project
+  // that somehow predates that (deviceCode undefined) fails closed --
+  // hasAcceptedTos(undefined) returns false -- rather than silently
+  // exempting old projects from a check meant to apply device-wide.
+  const accepted = await store.hasAcceptedTos(req.project.deviceCode);
+  if (!accepted) {
+    return res.status(403).json({
+      error: 'Accept the Terms & Privacy Policy on the Settings page before creating files.',
+      requiresTosAcceptance: true,
+    });
   }
 
   const actorLabel = req.isAI
@@ -217,3 +227,4 @@ aiRouter.put(/^\/content\/(.*)$/, handleWriteFile);
 aiRouter.delete(/^\/content\/(.*)$/, handleDeleteFile);
 
 module.exports = { humanRouter, aiRouter };
+
