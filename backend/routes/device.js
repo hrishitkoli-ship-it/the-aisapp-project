@@ -48,6 +48,36 @@ router.get('/', async (req, res, next) => {
   }
 });
 
+// POST /api/device/accept-tos - marks this device's Terms & Privacy as
+// accepted. Called from the Settings page. Idempotent. Requires a
+// device to already exist (a device is created lazily at first project
+// creation -- see routes/projects.js -- so on a genuinely fresh
+// install with zero projects, there's nothing to accept FOR yet).
+//
+// Deliberately NOT behind requireDeviceSecret, unlike DELETE below --
+// different risk profile, not an oversight. requireDeviceSecret exists
+// to stop an attacker from DESTROYING or taking over someone else's
+// device/projects (see SECURITY.md §3b); calling this endpoint against
+// a device that isn't yours only flips that device's own consent flag
+// and grants the caller no capability they didn't already have (file
+// writes on that device were already reachable with no token before
+// this existed, same as today) -- there's nothing here worth gating
+// the same way as an irreversible delete or a token-invalidating
+// regenerate.
+router.post('/accept-tos', async (req, res, next) => {
+  try {
+    const device = await store.getDevice();
+    if (!device) {
+      return res.status(404).json({
+        error: 'No device identity exists yet -- create a project first.',
+      });
+    }
+    await store.acceptTos(device.code);
+    res.json({ success: true, acceptedAt: new Date().toISOString() });
+  } catch (err) {
+    next(err);
+  }
+});
 // DELETE /api/device - delete this device's identity AND every project
 // created under it (their tokens embed a code that no longer exists
 // anywhere, so they're unauthenticatable regardless -- deleting the
@@ -103,3 +133,4 @@ router.delete('/', humanSensitiveLimiter, requireDeviceSecret, async (req, res, 
 });
 
 module.exports = router;
+
