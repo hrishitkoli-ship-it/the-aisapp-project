@@ -72,9 +72,9 @@
   }
 
   function showStatus(mountEl, message, kind = 'info') {
-    const existing = mountEl.querySelector('.aihub-status');
+    const existing = mountEl.querySelector('.aisapp-status');
     if (existing) existing.remove();
-    const el = h('div', { class: `aihub-status aihub-status--${kind}` }, message);
+    const el = h('div', { class: `aisapp-status aisapp-status--${kind}` }, message);
     mountEl.prepend(el);
     if (kind !== 'error') setTimeout(() => el.remove(), 4000);
   }
@@ -136,13 +136,13 @@
 
   function renderDiff(oldText, newText) {
     const rows = diffLines(oldText, newText);
-    const container = h('div', { class: 'aihub-diff' });
+    const container = h('div', { class: 'aisapp-diff' });
 
     if (rows === null) {
       container.appendChild(
         h(
           'p',
-          { class: 'aihub-diff-toolong' },
+          { class: 'aisapp-diff-toolong' },
           `Both versions are large (over ${DIFF_LINE_CAP} lines) -- showing sizes instead of a full diff: yours is ${
             oldText.split('\n').length
           } lines, the server's is ${newText.split('\n').length} lines.`
@@ -162,7 +162,7 @@
         .some((r) => r.type !== 'same');
       if (!isChange && !nearChange) {
         if (lastShown !== -2) {
-          container.appendChild(h('div', { class: 'aihub-diff-line aihub-diff-line--collapsed' }, '⋯'));
+          container.appendChild(h('div', { class: 'aisapp-diff-line aisapp-diff-line--collapsed' }, '⋯'));
           lastShown = -2;
         }
         return;
@@ -170,7 +170,7 @@
       lastShown = idx;
       const prefix = row.type === 'added' ? '+' : row.type === 'removed' ? '-' : ' ';
       container.appendChild(
-        h('div', { class: `aihub-diff-line aihub-diff-line--${row.type}` }, `${prefix} ${row.line}`)
+        h('div', { class: `aisapp-diff-line aisapp-diff-line--${row.type}` }, `${prefix} ${row.line}`)
       );
     });
 
@@ -224,21 +224,21 @@
   }
 
   function renderTreeNodes(nodes, depth) {
-    const container = h('div', { class: 'aihub-tree-level' });
+    const container = h('div', { class: 'aisapp-tree-level' });
     for (const node of nodes) {
       if (node.type === 'directory') {
         const isOpen = state.expandedDirs.has(node.path);
         const row = h(
           'button',
           {
-            class: 'aihub-tree-row aihub-tree-row--dir',
+            class: 'aisapp-tree-row aisapp-tree-row--dir',
             style: `padding-left:${depth * 16 + 10}px`,
             onclick: () => toggleDir(node.path),
           },
           [
-            h('span', { class: 'aihub-tree-caret' }, isOpen ? '▾' : '▸'),
-            window.AihubIcons.el('folder', { className: 'aihub-tree-icon', size: 15 }),
-            h('span', { class: 'aihub-tree-name' }, node.name),
+            h('span', { class: 'aisapp-tree-caret' }, isOpen ? '▾' : '▸'),
+            window.AisappIcons.el('folder', { className: 'aisapp-tree-icon', size: 15 }),
+            h('span', { class: 'aisapp-tree-name' }, node.name),
           ]
         );
         container.appendChild(row);
@@ -250,13 +250,13 @@
         const row = h(
           'button',
           {
-            class: `aihub-tree-row aihub-tree-row--file${isSelected ? ' is-selected' : ''}`,
+            class: `aisapp-tree-row aisapp-tree-row--file${isSelected ? ' is-selected' : ''}`,
             style: `padding-left:${depth * 16 + 10}px`,
             onclick: () => openFile(node.path),
           },
           [
-            window.AihubIcons.el('file', { className: 'aihub-tree-icon', size: 15 }),
-            h('span', { class: 'aihub-tree-name' }, node.name),
+            window.AisappIcons.el('file', { className: 'aisapp-tree-icon', size: 15 }),
+            h('span', { class: 'aisapp-tree-name' }, node.name),
           ]
         );
         container.appendChild(row);
@@ -353,13 +353,13 @@
       serverContent = null;
     }
 
-    const overlay = h('div', { class: 'aihub-modal-overlay' });
+    const overlay = h('div', { class: 'aisapp-modal-overlay' });
 
     const whoWhen = conflictBody.lastModifiedBy
       ? `${conflictBody.lastModifiedBy}, ${new Date(conflictBody.lastModifiedAt).toLocaleString()}`
       : 'someone else, just now';
 
-    const body = h('div', { class: 'aihub-modal aihub-modal--wide' }, [
+    const body = h('div', { class: 'aisapp-modal aisapp-modal--wide' }, [
       h('h2', {}, 'This file changed since you opened it'),
       h(
         'p',
@@ -368,13 +368,13 @@
       ),
       serverContent !== null
         ? renderDiff(serverContent, localContent)
-        : h('p', { class: 'aihub-modal-warning' }, "Couldn't load the server's current version to compare."),
+        : h('p', { class: 'aisapp-modal-warning' }, "Couldn't load the server's current version to compare."),
     ]);
 
     const keepMineBtn = h(
       'button',
       {
-        class: 'aihub-btn aihub-btn--primary',
+        class: 'aisapp-btn aisapp-btn--primary',
         onclick: async () => {
           overlay.remove();
           await saveFile({ force: true });
@@ -386,7 +386,7 @@
     const useTheirsBtn = h(
       'button',
       {
-        class: 'aihub-btn',
+        class: 'aisapp-btn',
         onclick: () => {
           if (serverContent === null) return;
           state.editorContent = serverContent;
@@ -401,9 +401,9 @@
     );
     if (serverContent === null) useTheirsBtn.disabled = true;
 
-    const cancelBtn = h('button', { class: 'aihub-btn aihub-btn--subtle', onclick: () => overlay.remove() }, 'Cancel');
+    const cancelBtn = h('button', { class: 'aisapp-btn aisapp-btn--subtle', onclick: () => overlay.remove() }, 'Cancel');
 
-    body.appendChild(h('div', { class: 'aihub-modal-actions' }, [cancelBtn, useTheirsBtn, keepMineBtn]));
+    body.appendChild(h('div', { class: 'aisapp-modal-actions' }, [cancelBtn, useTheirsBtn, keepMineBtn]));
     overlay.appendChild(body);
     document.body.appendChild(overlay);
   }
@@ -437,135 +437,9 @@
     }
   }
 
-  // -------------------------------------------------------------
-  // New File/Folder dialog. Replaces the old bare window.prompt().
-  //
-  // IMPORTANT CONSTRAINT this dialog is built around: this backend
-  // has no concept of a real, empty directory at all (see
-  // backend/utils/fileOps.js's own header comment -- "folder" is
-  // purely inferred client-side by buildFileTree() splitting a file's
-  // path on "/"). An empty folder literally cannot be represented in
-  // this data model, the same way an empty folder can't exist in a
-  // bare git tree or a raw S3 bucket -- there is nothing to create a
-  // row for. So "Folder" mode here does NOT call some nonexistent
-  // create-folder endpoint; it creates a starter placeholder file
-  // INSIDE the folder (path ending in "/" + a fixed filename), which
-  // is the only way to make an empty-feeling folder actually appear
-  // in the tree. This matches the trailing-slash convention the
-  // original fix request suggested as an alternative to a literal
-  // folder-creation API.
-  //
-  // Nested folder creation "in one action" (e.g. "scripts/utils/new")
-  // already works with zero backend or dialog changes -- PUTting to
-  // any multi-segment path already produces a fully correct nested
-  // tree (buildFileTree splits on every "/" and creates an
-  // intermediate directory node per segment, verified by reading that
-  // function directly before writing this comment). The dialog just
-  // needs to accept a path with slashes in it, which a plain text
-  // input already does.
-  // -------------------------------------------------------------
-
-  function showNewFileDialog() {
-    return new Promise((resolve) => {
-      const overlay = h('div', { class: 'aihub-modal-overlay' });
-
-      let mode = 'file'; // 'file' | 'folder'
-
-      const nameInput = h('input', {
-        type: 'text',
-        class: 'aihub-input',
-        placeholder: 'e.g. scripts/new_item.js',
-        autofocus: 'true',
-      });
-
-      const fileModeBtn = h(
-        'button',
-        {
-          type: 'button',
-          class: 'aihub-btn aihub-btn--toggle aihub-btn--toggle-active',
-          onclick: () => setMode('file'),
-        },
-        'File'
-      );
-      const folderModeBtn = h(
-        'button',
-        {
-          type: 'button',
-          class: 'aihub-btn aihub-btn--toggle',
-          onclick: () => setMode('folder'),
-        },
-        'Folder'
-      );
-
-      function setMode(next) {
-        mode = next;
-        fileModeBtn.classList.toggle('aihub-btn--toggle-active', mode === 'file');
-        folderModeBtn.classList.toggle('aihub-btn--toggle-active', mode === 'folder');
-        nameInput.placeholder =
-          mode === 'file' ? 'e.g. scripts/new_item.js' : 'e.g. scripts/new_folder';
-      }
-
-      const hint = h(
-        'p',
-        { class: 'aihub-modal-hint' },
-        'Use "/" to nest — e.g. "scripts/utils/helpers.js" creates both folders in one step.'
-      );
-
-      function submit() {
-        const raw = nameInput.value.trim();
-        if (!raw) {
-          nameInput.focus();
-          return;
-        }
-        // Strip any leading slashes the person typed, and any trailing
-        // slash they typed themselves in File mode (a trailing slash
-        // only means something in Folder mode, where WE add it).
-        let cleanPath = raw.replace(/^\/+/, '');
-        if (mode === 'folder') {
-          cleanPath = cleanPath.replace(/\/+$/, '') + '/new_file.txt';
-        } else {
-          cleanPath = cleanPath.replace(/\/+$/, '');
-        }
-        overlay.remove();
-        resolve(cleanPath);
-      }
-
-      nameInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') submit();
-        if (e.key === 'Escape') {
-          overlay.remove();
-          resolve(null);
-        }
-      });
-
-      const cancelBtn = h(
-        'button',
-        { class: 'aihub-btn', onclick: () => { overlay.remove(); resolve(null); } },
-        'Cancel'
-      );
-      const createBtn = h(
-        'button',
-        { class: 'aihub-btn aihub-btn--primary', onclick: submit },
-        'Create'
-      );
-
-      const modal = h('div', { class: 'aihub-modal', role: 'dialog', 'aria-modal': 'true' }, [
-        h('h2', {}, 'New file or folder'),
-        h('div', { class: 'aihub-toggle-row' }, [fileModeBtn, folderModeBtn]),
-        nameInput,
-        hint,
-        h('div', { class: 'aihub-modal-actions' }, [cancelBtn, createBtn]),
-      ]);
-
-      overlay.appendChild(modal);
-      document.body.appendChild(overlay);
-      nameInput.focus();
-    });
-  }
-
   async function createNewFile() {
-    const path = await showNewFileDialog();
-    if (!path) return;
+    const path = window.prompt('New file path (e.g. scripts/new_item.js):');
+    if (!path || !path.trim()) return;
     const cleanPath = path.trim().replace(/^\/+/, '');
     try {
       await api(state.projectId, `/files/content/${cleanPath}`, {
@@ -587,16 +461,16 @@
     const { mountEl } = state;
     clear(mountEl);
 
-    const toolbar = h('div', { class: 'aihub-ws-toolbar' }, [
+    const toolbar = h('div', { class: 'aisapp-ws-toolbar' }, [
       h(
         'button',
-        { class: 'aihub-btn aihub-btn--subtle aihub-icon-row', onclick: createNewFile },
-        [window.AihubIcons.el('plus', { size: 16 }), 'New file']
+        { class: 'aisapp-btn aisapp-btn--subtle aisapp-icon-row', onclick: createNewFile },
+        [window.AisappIcons.el('plus', { size: 16 }), 'New file']
       ),
       h(
         'button',
-        { class: 'aihub-btn aihub-btn--subtle aihub-icon-row', onclick: loadTree },
-        [window.AihubIcons.el('refresh', { size: 16 }), 'Refresh']
+        { class: 'aisapp-btn aisapp-btn--subtle aisapp-icon-row', onclick: loadTree },
+        [window.AisappIcons.el('refresh', { size: 16 }), 'Refresh']
       ),
     ]);
     mountEl.appendChild(toolbar);
@@ -609,12 +483,12 @@
   }
 
   function renderTreePanel() {
-    const panel = h('div', { class: 'aihub-panel aihub-ws-tree-panel' });
+    const panel = h('div', { class: 'aisapp-panel aisapp-ws-tree-panel' });
     if (state.loadingTree) {
-      panel.appendChild(h('p', { class: 'aihub-empty-state' }, 'Loading files…'));
+      panel.appendChild(h('p', { class: 'aisapp-empty-state' }, 'Loading files…'));
     } else if (state.tree.length === 0) {
       panel.appendChild(
-        h('p', { class: 'aihub-empty-state' }, 'No files yet. Create one above, or have an AI session push one.')
+        h('p', { class: 'aisapp-empty-state' }, 'No files yet. Create one above, or have an AI session push one.')
       );
     } else {
       panel.appendChild(renderTreeNodes(state.tree, 0));
@@ -623,31 +497,31 @@
   }
 
   function renderEditor() {
-    const wrap = h('div', { class: 'aihub-ws-editor' });
+    const wrap = h('div', { class: 'aisapp-ws-editor' });
 
-    const header = h('div', { class: 'aihub-ws-editor-header' }, [
+    const header = h('div', { class: 'aisapp-ws-editor-header' }, [
       h(
         'button',
-        { class: 'aihub-btn aihub-btn--subtle aihub-icon-row', onclick: closeFile },
-        [window.AihubIcons.el('chevron-left', { size: 16 }), 'Files']
+        { class: 'aisapp-btn aisapp-btn--subtle aisapp-icon-row', onclick: closeFile },
+        [window.AisappIcons.el('chevron-left', { size: 16 }), 'Files']
       ),
-      h('span', { class: 'aihub-ws-editor-path aihub-mono' }, state.selectedPath),
+      h('span', { class: 'aisapp-ws-editor-path aisapp-mono' }, state.selectedPath),
     ]);
     wrap.appendChild(header);
 
     if (state.loadingFile) {
-      wrap.appendChild(h('p', { class: 'aihub-empty-state' }, 'Loading…'));
+      wrap.appendChild(h('p', { class: 'aisapp-empty-state' }, 'Loading…'));
       return wrap;
     }
 
     const lineCount = Math.max(state.editorContent.split('\n').length, 1);
-    const gutter = h('div', { class: 'aihub-ws-gutter aihub-mono' });
+    const gutter = h('div', { class: 'aisapp-ws-gutter aisapp-mono' });
     for (let i = 1; i <= lineCount; i++) {
       gutter.appendChild(h('div', {}, String(i)));
     }
 
     const textarea = h('textarea', {
-      class: 'aihub-ws-textarea aihub-mono',
+      class: 'aisapp-ws-textarea aisapp-mono',
       spellcheck: 'false',
       autocapitalize: 'off',
       autocorrect: 'off',
@@ -668,13 +542,13 @@
       gutter.scrollTop = textarea.scrollTop;
     });
 
-    const editorBody = h('div', { class: 'aihub-ws-editor-body' }, [gutter, textarea]);
+    const editorBody = h('div', { class: 'aisapp-ws-editor-body' }, [gutter, textarea]);
     wrap.appendChild(editorBody);
 
     const saveBtn = h(
       'button',
       {
-        class: 'aihub-btn aihub-btn--primary',
+        class: 'aisapp-btn aisapp-btn--primary',
         onclick: async () => {
           saveBtn.disabled = true;
           saveBtn.textContent = 'Saving…';
@@ -690,17 +564,17 @@
     );
     saveBtn.disabled = !hasUnsavedChanges();
 
-    const actions = h('div', { class: 'aihub-ws-editor-actions' }, [
+    const actions = h('div', { class: 'aisapp-ws-editor-actions' }, [
       saveBtn,
       h(
         'button',
-        { class: 'aihub-btn aihub-icon-row', onclick: downloadCurrentFile },
-        [window.AihubIcons.el('download', { size: 16 }), 'Download']
+        { class: 'aisapp-btn aisapp-icon-row', onclick: downloadCurrentFile },
+        [window.AisappIcons.el('download', { size: 16 }), 'Download']
       ),
       h(
         'button',
-        { class: 'aihub-btn aihub-btn--danger aihub-icon-row', onclick: deleteCurrentFile },
-        [window.AihubIcons.el('trash', { size: 16 }), 'Delete']
+        { class: 'aisapp-btn aisapp-btn--danger aisapp-icon-row', onclick: deleteCurrentFile },
+        [window.AisappIcons.el('trash', { size: 16 }), 'Delete']
       ),
     ]);
     wrap.appendChild(actions);
@@ -712,7 +586,7 @@
   // Public entry point
   // -------------------------------------------------------------
 
-  window.AihubWorkspace = {
+  window.AisappWorkspace = {
     mount(mountEl, projectId) {
       state = freshState(projectId, mountEl);
       renderShell();
