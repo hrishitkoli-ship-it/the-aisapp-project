@@ -1,7 +1,7 @@
 /**
  * projects.css
  * ------------------------------------------------------------------
- * Session 3 lane. All selectors prefixed `aihub-` so this can be
+ * Session 3 lane. All selectors prefixed `aisapp-` so this can be
  * dropped into Session 1's shell without collisions. Dark theme by
  * default since this is a "run it locally, look at it on your phone
  * a lot" tool -- matches the screenshot of the GitHub app UI this
@@ -10,7 +10,7 @@
  * No CSS framework, no preprocessor -- see INSTRUCTIONS.md
  * architecture rule #1 (no build step).
  *
- * NOTE: the --aihub-* custom properties this file uses are now
+ * NOTE: the --aisapp-* custom properties this file uses are now
  * defined in base.css (Session 1's shared design-token file), which
  * also adds a [data-theme="light"] variant using these same names.
  * The values below were Session 3's originals; base.css copied them
@@ -19,47 +19,47 @@
  * ------------------------------------------------------------------
  */
 
-.aihub-page-title {
+.aisapp-page-title {
   font-size: 1.4rem;
   font-weight: 600;
   margin: 0 0 16px;
-  color: var(--aihub-text);
+  color: var(--aisapp-text);
 }
 
 /* ---- Install hint ---- */
 
-.aihub-install-hint {
+.aisapp-install-hint {
   margin-bottom: 16px;
 }
 
-.aihub-install-hint-text {
+.aisapp-install-hint-text {
   font-size: 0.85rem;
-  color: var(--aihub-text-dim);
-  background: var(--aihub-surface);
-  border: 1px solid var(--aihub-border);
-  border-radius: var(--aihub-radius);
+  color: var(--aisapp-text-dim);
+  background: var(--aisapp-surface);
+  border: 1px solid var(--aisapp-border);
+  border-radius: var(--aisapp-radius);
   padding: 10px 14px;
   margin: 0;
 }
 
 /* ---- Create form ---- */
 
-.aihub-create-form {
+.aisapp-create-form {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  background: var(--aihub-surface);
-  border: 1px solid var(--aihub-border);
-  border-radius: var(--aihub-radius);
+  background: var(--aisapp-surface);
+  border: 1px solid var(--aisapp-border);
+  border-radius: var(--aisapp-radius);
   padding: 14px;
   margin-bottom: 20px;
 }
 
-.aihub-input {
-  background: var(--aihub-surface-raised);
-  border: 1px solid var(--aihub-border);
+.aisapp-input {
+  background: var(--aisapp-surface-raised);
+  border: 1px solid var(--aisapp-border);
   border-radius: 8px;
-  color: var(--aihub-text);
+  color: var(--aisapp-text);
   padding: 10px 12px;
   font-size: 1rem;
   font-family: inherit;
@@ -67,22 +67,22 @@
   box-sizing: border-box;
 }
 
-.aihub-input:focus {
+.aisapp-input:focus {
   outline: none;
-  border-color: var(--aihub-accent);
+  border-color: var(--aisapp-accent);
 }
 
-.aihub-textarea {
+.aisapp-textarea {
   resize: vertical;
   min-height: 44px;
 }
 
 /* ---- Buttons ---- */
 
-.aihub-btn {
-  background: var(--aihub-surface-raised);
-  border: 1px solid var(--aihub-border);
-  color: var(--aihub-text);
+.aisapp-btn {
+  background: var(--aisapp-surface-raised);
+  border: 1px solid var(--aisapp-border);
+  color: var(--aisapp-text);
   border-radius: 8px;
   padding: 10px 16px;
   font-size: 0.95rem;
@@ -90,37 +90,37 @@
   cursor: pointer;
 }
 
-.aihub-btn:disabled {
+.aisapp-btn:disabled {
   opacity: 0.6;
   cursor: default;
 }
 
-.aihub-btn--primary {
-  background: var(--aihub-accent);
-  border-color: var(--aihub-accent);
+.aisapp-btn--primary {
+  background: var(--aisapp-accent);
+  border-color: var(--aisapp-accent);
   color: #fff;
   font-weight: 600;
 }
 
-.aihub-btn--danger {
-  background: var(--aihub-danger);
-  border-color: var(--aihub-danger);
+.aisapp-btn--danger {
+  background: var(--aisapp-danger);
+  border-color: var(--aisapp-danger);
   color: #fff;
   font-weight: 600;
 }
 
-.aihub-btn--subtle {
+.aisapp-btn--subtle {
   background: transparent;
-  border-color: var(--aihub-border);
-  color: var(--aihub-text-dim);
+  border-color: var(--aisapp-border);
+  color: var(--aisapp-text-dim);
   font-size: 0.85rem;
   padding: 8px 12px;
 }
 
-.aihub-icon-btn {
+.aisapp-icon-btn {
   background: transparent;
-  border: 1px solid var(--aihub-border);
-  color: var(--aihub-text-dim);
+  border: 1px solid var(--aisapp-border);
+  color: var(--aisapp-text-dim);
   border-radius: 8px;
   width: 40px;
   height: 40px;
@@ -130,52 +130,52 @@
   flex-shrink: 0;
 }
 
-.aihub-icon-btn--danger:hover,
-.aihub-icon-btn--danger:focus {
-  color: var(--aihub-danger);
-  border-color: var(--aihub-danger);
+.aisapp-icon-btn--danger:hover,
+.aisapp-icon-btn--danger:focus {
+  color: var(--aisapp-danger);
+  border-color: var(--aisapp-danger);
 }
 
 /* ---- Project list ---- */
 
-.aihub-project-list {
+.aisapp-project-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.aihub-project-row {
+.aisapp-project-row {
   display: flex;
   align-items: stretch;
   gap: 8px;
 }
 
-.aihub-project-card {
+.aisapp-project-card {
   flex: 1;
   text-align: left;
-  background: var(--aihub-surface);
-  border: 1px solid var(--aihub-border);
-  border-radius: var(--aihub-radius);
+  background: var(--aisapp-surface);
+  border: 1px solid var(--aisapp-border);
+  border-radius: var(--aisapp-radius);
   padding: 12px 14px;
-  color: var(--aihub-text);
+  color: var(--aisapp-text);
   font-family: inherit;
   cursor: pointer;
   position: relative;
   min-width: 0; /* allow text truncation in flex child */
 }
 
-.aihub-project-card:hover,
-.aihub-project-card:focus {
-  border-color: var(--aihub-accent);
+.aisapp-project-card:hover,
+.aisapp-project-card:focus {
+  border-color: var(--aisapp-accent);
   outline: none;
 }
 
-.aihub-project-card--current {
-  border-color: var(--aihub-accent);
-  background: var(--aihub-surface-raised);
+.aisapp-project-card--current {
+  border-color: var(--aisapp-accent);
+  background: var(--aisapp-surface-raised);
 }
 
-.aihub-project-card-name {
+.aisapp-project-card-name {
   font-weight: 600;
   font-size: 1rem;
   white-space: nowrap;
@@ -183,26 +183,26 @@
   text-overflow: ellipsis;
 }
 
-.aihub-project-card-desc {
+.aisapp-project-card-desc {
   font-size: 0.85rem;
-  color: var(--aihub-text-dim);
+  color: var(--aisapp-text-dim);
   margin-top: 2px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.aihub-project-card-meta {
+.aisapp-project-card-meta {
   font-size: 0.75rem;
-  color: var(--aihub-text-dim);
+  color: var(--aisapp-text-dim);
   margin-top: 6px;
 }
 
-.aihub-badge {
+.aisapp-badge {
   position: absolute;
   top: 10px;
   right: 12px;
-  background: var(--aihub-accent);
+  background: var(--aisapp-accent);
   color: #fff;
   font-size: 0.7rem;
   font-weight: 600;
@@ -210,57 +210,57 @@
   border-radius: 999px;
 }
 
-.aihub-empty-state {
-  color: var(--aihub-text-dim);
+.aisapp-empty-state {
+  color: var(--aisapp-text-dim);
   text-align: center;
   padding: 32px 16px;
   font-size: 0.9rem;
 }
 
-.aihub-loading-state {
-  color: var(--aihub-text-dim);
+.aisapp-loading-state {
+  color: var(--aisapp-text-dim);
   text-align: center;
   padding: 32px 16px;
   font-size: 0.9rem;
   opacity: 0.6;
 }
 
-.aihub-error-state {
+.aisapp-error-state {
   text-align: center;
   padding: 24px 16px;
-  border: 1px solid var(--aihub-danger);
-  background: var(--aihub-danger-dim);
-  border-radius: var(--aihub-radius);
+  border: 1px solid var(--aisapp-danger);
+  background: var(--aisapp-danger-dim);
+  border-radius: var(--aisapp-radius);
 }
 
-.aihub-error-state p {
-  color: var(--aihub-danger);
+.aisapp-error-state p {
+  color: var(--aisapp-danger);
   font-size: 0.9rem;
   margin: 0 0 12px;
 }
 
 /* ---- Status toast ---- */
 
-.aihub-status {
+.aisapp-status {
   padding: 10px 14px;
   border-radius: 8px;
   font-size: 0.85rem;
   margin-bottom: 12px;
 }
 
-.aihub-status--info {
-  background: var(--aihub-surface-raised);
-  color: var(--aihub-text-dim);
+.aisapp-status--info {
+  background: var(--aisapp-surface-raised);
+  color: var(--aisapp-text-dim);
 }
 
-.aihub-status--error {
-  background: var(--aihub-danger-dim);
-  color: var(--aihub-danger);
+.aisapp-status--error {
+  background: var(--aisapp-danger-dim);
+  color: var(--aisapp-danger);
 }
 
 /* ---- Modals (token reveal + destructive confirm) ---- */
 
-.aihub-modal-overlay {
+.aisapp-modal-overlay {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.7);
@@ -272,61 +272,61 @@
   box-sizing: border-box;
 }
 
-.aihub-modal {
-  background: var(--aihub-surface);
-  border: 1px solid var(--aihub-border);
+.aisapp-modal {
+  background: var(--aisapp-surface);
+  border: 1px solid var(--aisapp-border);
   border-radius: 14px;
   padding: 20px;
   max-width: 420px;
   width: 100%;
 }
 
-.aihub-modal h2 {
+.aisapp-modal h2 {
   margin: 0 0 10px;
   font-size: 1.1rem;
-  color: var(--aihub-text);
+  color: var(--aisapp-text);
 }
 
-.aihub-modal p {
+.aisapp-modal p {
   margin: 0 0 14px;
   font-size: 0.9rem;
-  color: var(--aihub-text-dim);
+  color: var(--aisapp-text-dim);
   line-height: 1.4;
 }
 
-.aihub-modal-warning {
-  color: var(--aihub-danger) !important;
+.aisapp-modal-warning {
+  color: var(--aisapp-danger) !important;
 }
 
-.aihub-token-display {
+.aisapp-token-display {
   display: block;
-  background: var(--aihub-surface-raised);
-  border: 1px solid var(--aihub-border);
+  background: var(--aisapp-surface-raised);
+  border: 1px solid var(--aisapp-border);
   border-radius: 8px;
   padding: 12px;
   font-family: 'SF Mono', 'Roboto Mono', monospace;
   font-size: 0.85rem;
-  color: var(--aihub-success);
+  color: var(--aisapp-success);
   word-break: break-all;
   margin-bottom: 14px;
   user-select: all;
 }
 
-.aihub-token-display:focus {
-  outline: 2px solid var(--aihub-accent);
+.aisapp-token-display:focus {
+  outline: 2px solid var(--aisapp-accent);
 }
 
-.aihub-modal-actions {
+.aisapp-modal-actions {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
 }
 
 @media (max-width: 480px) {
-  .aihub-modal-actions {
+  .aisapp-modal-actions {
     flex-direction: column-reverse;
   }
-  .aihub-modal-actions .aihub-btn {
+  .aisapp-modal-actions .aisapp-btn {
     width: 100%;
   }
 }
