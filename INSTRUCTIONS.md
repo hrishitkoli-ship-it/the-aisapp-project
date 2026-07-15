@@ -244,6 +244,108 @@ once.
 
 ---
 
+## Feature sprint (human-directed, 16 items)
+
+The human sent a large fix/feature list framed for "an engineer AI" and
+asked for it to be divided across sessions. Two corrections before the
+division, since acting on either wrong premise would misdirect real
+work:
+
+- **This is not a Next.js/React app.** Vanilla JS, Express, Turso, no
+  build step, no framework -- this has been Rule 1 since the very
+  first version of this file. The human's own words on this: "Dont
+  worry the languages used in this since ideas are genuine and addopt
+  in your way" -- so every item below is translated to this actual
+  stack (CSS transitions instead of framer-motion, a plain `h()`-based
+  button factory instead of a React component, `Promise.all` + a
+  simple cache instead of SWR/React Query, etc.), not skipped or
+  blocked on the mismatch.
+- **Session 2 is not "for testing."** They built the Turso migration,
+  the device-secret system, composite tokens, rate limiting, and
+  `IDEAS.md` -- substantial backend/security work, directly verified
+  multiple times in this file's own Session Ledger. Session 5 (the
+  actual testing/integration lane) is retired -- see the note at the
+  top of this file -- folded into Rule 6 plus Session 3 explicitly
+  covering that scope per separate human instruction. Division below
+  is by which subsystem each item actually touches, given that
+  correction.
+
+**#1 (rebrand aihub -> aisapp) is done** -- see Session 3's ledger
+entry. Ship order for the rest, as specified: **1-5 -> 7-12 -> 14-16 ->
+13** (13 is explicitly optional and last).
+
+### Session 1 (shell / router / workspace / design system)
+- **#2** -- New File dialog: add a File/Folder toggle (or support a
+  trailing "/" to create a folder), including nested folder creation
+  in one action.
+- **#4** -- Audit for unnecessary full re-renders (this app's version
+  of "re-render thrashing" without a VDOM: functions that rebuild a
+  whole list on every small change instead of diffing). Cache rendered
+  list items where cheap, avoid full-list rebuilds for a single-item
+  change.
+- **#5** -- Replace "Loading..." text with skeleton screens matching
+  final layout (CSS shimmer, no dependency needed) for file list,
+  roster, activity feed.
+- **#7** -- Transitions app-wide: page nav, modal open/close, list
+  add/remove, tab switches. Plain CSS transitions/keyframes, ease-out,
+  ~150-250ms. Audit for instant/jumpy state changes.
+- **#8** -- Buttons feel stiff: hover/active/press feedback (subtle
+  scale/shadow), consistent radius/easing. Build one shared button
+  factory (an `h()`-based helper with variants, matching the pattern
+  `projects.js` already uses) instead of ad hoc styles per file.
+- **#9** -- Per-extension file icons (.js/.ts/.json/.md/.txt/etc.) --
+  extends `icons.js`.
+- **#10** -- Real syntax-highlighted code viewer. Prism over Shiki --
+  Shiki's typical usage assumes Node-side rendering or a WASM bundle;
+  Prism drops in via a CDN script tag with zero build step, matching
+  Rule 1.
+- **#14** -- Actual visual design pass on the home page (hierarchy,
+  spacing, accent) using whatever design tokens `base.css` already
+  defines, not a plain list.
+
+### Session 2 (backend / data / Turso)
+- **#3** -- Profile the project/workspace fetch. Check for N+1 queries
+  against Turso, missing indexes, redundant roster/activity refetch on
+  every nav. Fix with `Promise.all` for parallel fetches + a simple
+  in-memory cache layer (no SWR/React Query -- there's no React).
+- **#6** -- "Download AI Instructions" button on the home page serving
+  a SKILL.md that teaches any AI (Claude, ChatGPT, Gemini, DeepSeek,
+  future models) this app's API/workflow. Must generate from a single
+  source-of-truth doc and stay in sync automatically -- a script run
+  during `vercel-build` (or as a pre-push check) that regenerates
+  `SKILL.md` from the actual route definitions, not hand-maintained
+  separately. Ties to this session's existing ownership of the
+  API/backend surface being documented.
+- **#12** -- "Download all files" per project -> .zip. JSZip
+  client-side is simplest given no build step; a server-side zip
+  stream is the alternative if project sizes make that impractical --
+  this session's call given they own the size-limit logic already.
+- **#13** (optional, last) -- Connect a GitHub repo per project, push
+  files directly (OAuth or PAT).
+
+### Session 4 (security / hardening / compliance + review)
+- **#16** -- Privacy Policy + Terms & Conditions links in the home
+  page footer. Require acceptance (checkbox/modal) before the first
+  project can be created.
+- **Standing, in addition to #16**: review Priority 1/2 items as they
+  land from Sessions 1 and 2, consistent with this session's
+  established audit role and Rule 6 -- e.g., confirm new animations
+  don't break keyboard/focus handling, confirm the zip-download
+  doesn't leak path info outside a project's own directory.
+
+### Session 3 (this session -- project management UI + Session 5's retired scope)
+- **#11** -- Search bar on the projects/home page, filtering by name
+  and description. Lives directly in `projects.js`.
+- **#15** -- Remove the permanent "Create project" form from home;
+  replace with a blue circular FAB opening a modal/sheet for project
+  creation. Also lives directly in `projects.js`.
+- **Standing**: verify each item above as it lands (live-server
+  testing, not just code review -- see this session's own ledger
+  entries for why that distinction has mattered repeatedly), keep this
+  file current.
+
+---
+
 ## Coordination protocol
 
 - **Rule 0 covers session start. This section covers the rest of the
