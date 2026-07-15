@@ -1,6 +1,15 @@
 /**
  * generate_icons.js
  * ------------------------------------------------------------------
+ * SUPERSEDED: the human provided an actual source logo directly and
+ * asked for it to be used as-is (the app's real icon, not "inspired
+ * by" abstraction) -- frontend/icons/icon-{192,512}.png are now
+ * center-cropped-to-square, high-quality-downsampled exports from
+ * that source image, not the output of this script. Kept here as a
+ * historical record and as a no-native-deps fallback generator if
+ * ever needed again, not because it's what currently produces the
+ * shipped icons.
+ *
  * One-off script (not part of the running app) that generates the PWA
  * icon PNGs using nothing but Node's built-in zlib module -- no
  * node-canvas, no sharp, no native image libraries. Those all require
