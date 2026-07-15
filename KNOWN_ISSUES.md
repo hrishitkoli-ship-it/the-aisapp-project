@@ -44,7 +44,7 @@ but callers still call it as `generateToken(deviceCode)`, and
 as *"the permanent 12-char code embedded as a fixed prefix in every
 project token."* Confirmed this used to actually work: earlier in this
 same session, two tokens generated for the same simulated device both
-started `aihub_0cHM05Xq6AZB...` — a shared 12-char prefix. That
+started `aisapp_0cHM05Xq6AZB...` — a shared 12-char prefix. That
 behavior is gone from the current file.
 
 This has the shape of a device-identity refactor that's mid-flight —
