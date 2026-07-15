@@ -32,6 +32,7 @@ const path = require('path');
 
 const projectsRouter = require('./routes/projects');
 const deviceRoutes = require('./routes/device');
+const migrationRoutes = require('./routes/migration');
 const sessionsRoutes = require('./routes/sessions');
 const instructionsRoutes = require('./routes/instructions');
 const activityRoutes = require('./routes/activity');
@@ -125,6 +126,7 @@ app.use(globalBackstopLimiter);
 // ---------------------------------------------------------------------
 app.use('/api/projects', projectsRouter);
 app.use('/api/device', deviceRoutes);
+app.use('/api/migration', migrationRoutes);
 app.use('/api/projects/:projectId/sessions', sessionsRoutes.humanRouter);
 app.use('/api/projects/:projectId/instructions', instructionsRoutes.humanRouter);
 app.use('/api/projects/:projectId/activity', activityRoutes.humanRouter);
@@ -219,3 +221,4 @@ app.use((err, req, res, next) => {
 });
 
 module.exports = app;
+
