@@ -16,7 +16,7 @@
  * ------------------------------------------------------------------
  */
 
-const CACHE_NAME = 'aihub-shell-v3';
+const CACHE_NAME = 'aisapp-shell-v3';
 
 const SHELL_ASSETS = [
   '/',
