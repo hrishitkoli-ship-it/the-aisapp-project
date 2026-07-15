@@ -198,3 +198,30 @@
   font-family: var(--aihub-font-body);
   font-size: 0.85rem;
 }
+
+/* ---- New File/Folder dialog (File/Folder mode toggle) ---- */
+
+.aihub-toggle-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.aihub-btn--toggle {
+  flex: 1;
+  border: 1px solid var(--aihub-border);
+  background: var(--aihub-surface);
+  color: var(--aihub-text-dim);
+}
+
+.aihub-btn--toggle-active {
+  border-color: var(--aihub-accent);
+  background: var(--aihub-accent-dim);
+  color: var(--aihub-accent);
+}
+
+.aihub-modal-hint {
+  margin: 8px 0 0;
+  font-size: 0.8rem;
+  color: var(--aihub-text-dim);
+}

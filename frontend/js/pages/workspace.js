@@ -437,9 +437,135 @@
     }
   }
 
+  // -------------------------------------------------------------
+  // New File/Folder dialog. Replaces the old bare window.prompt().
+  //
+  // IMPORTANT CONSTRAINT this dialog is built around: this backend
+  // has no concept of a real, empty directory at all (see
+  // backend/utils/fileOps.js's own header comment -- "folder" is
+  // purely inferred client-side by buildFileTree() splitting a file's
+  // path on "/"). An empty folder literally cannot be represented in
+  // this data model, the same way an empty folder can't exist in a
+  // bare git tree or a raw S3 bucket -- there is nothing to create a
+  // row for. So "Folder" mode here does NOT call some nonexistent
+  // create-folder endpoint; it creates a starter placeholder file
+  // INSIDE the folder (path ending in "/" + a fixed filename), which
+  // is the only way to make an empty-feeling folder actually appear
+  // in the tree. This matches the trailing-slash convention the
+  // original fix request suggested as an alternative to a literal
+  // folder-creation API.
+  //
+  // Nested folder creation "in one action" (e.g. "scripts/utils/new")
+  // already works with zero backend or dialog changes -- PUTting to
+  // any multi-segment path already produces a fully correct nested
+  // tree (buildFileTree splits on every "/" and creates an
+  // intermediate directory node per segment, verified by reading that
+  // function directly before writing this comment). The dialog just
+  // needs to accept a path with slashes in it, which a plain text
+  // input already does.
+  // -------------------------------------------------------------
+
+  function showNewFileDialog() {
+    return new Promise((resolve) => {
+      const overlay = h('div', { class: 'aihub-modal-overlay' });
+
+      let mode = 'file'; // 'file' | 'folder'
+
+      const nameInput = h('input', {
+        type: 'text',
+        class: 'aihub-input',
+        placeholder: 'e.g. scripts/new_item.js',
+        autofocus: 'true',
+      });
+
+      const fileModeBtn = h(
+        'button',
+        {
+          type: 'button',
+          class: 'aihub-btn aihub-btn--toggle aihub-btn--toggle-active',
+          onclick: () => setMode('file'),
+        },
+        'File'
+      );
+      const folderModeBtn = h(
+        'button',
+        {
+          type: 'button',
+          class: 'aihub-btn aihub-btn--toggle',
+          onclick: () => setMode('folder'),
+        },
+        'Folder'
+      );
+
+      function setMode(next) {
+        mode = next;
+        fileModeBtn.classList.toggle('aihub-btn--toggle-active', mode === 'file');
+        folderModeBtn.classList.toggle('aihub-btn--toggle-active', mode === 'folder');
+        nameInput.placeholder =
+          mode === 'file' ? 'e.g. scripts/new_item.js' : 'e.g. scripts/new_folder';
+      }
+
+      const hint = h(
+        'p',
+        { class: 'aihub-modal-hint' },
+        'Use "/" to nest — e.g. "scripts/utils/helpers.js" creates both folders in one step.'
+      );
+
+      function submit() {
+        const raw = nameInput.value.trim();
+        if (!raw) {
+          nameInput.focus();
+          return;
+        }
+        // Strip any leading slashes the person typed, and any trailing
+        // slash they typed themselves in File mode (a trailing slash
+        // only means something in Folder mode, where WE add it).
+        let cleanPath = raw.replace(/^\/+/, '');
+        if (mode === 'folder') {
+          cleanPath = cleanPath.replace(/\/+$/, '') + '/new_file.txt';
+        } else {
+          cleanPath = cleanPath.replace(/\/+$/, '');
+        }
+        overlay.remove();
+        resolve(cleanPath);
+      }
+
+      nameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') submit();
+        if (e.key === 'Escape') {
+          overlay.remove();
+          resolve(null);
+        }
+      });
+
+      const cancelBtn = h(
+        'button',
+        { class: 'aihub-btn', onclick: () => { overlay.remove(); resolve(null); } },
+        'Cancel'
+      );
+      const createBtn = h(
+        'button',
+        { class: 'aihub-btn aihub-btn--primary', onclick: submit },
+        'Create'
+      );
+
+      const modal = h('div', { class: 'aihub-modal', role: 'dialog', 'aria-modal': 'true' }, [
+        h('h2', {}, 'New file or folder'),
+        h('div', { class: 'aihub-toggle-row' }, [fileModeBtn, folderModeBtn]),
+        nameInput,
+        hint,
+        h('div', { class: 'aihub-modal-actions' }, [cancelBtn, createBtn]),
+      ]);
+
+      overlay.appendChild(modal);
+      document.body.appendChild(overlay);
+      nameInput.focus();
+    });
+  }
+
   async function createNewFile() {
-    const path = window.prompt('New file path (e.g. scripts/new_item.js):');
-    if (!path || !path.trim()) return;
+    const path = await showNewFileDialog();
+    if (!path) return;
     const cleanPath = path.trim().replace(/^\/+/, '');
     try {
       await api(state.projectId, `/files/content/${cleanPath}`, {
