@@ -75,9 +75,9 @@
   }
 
   function showStatus(mountEl, message, kind = 'info') {
-    const existing = mountEl.querySelector('.aihub-status');
+    const existing = mountEl.querySelector('.aisapp-status');
     if (existing) existing.remove();
-    const el = h('div', { class: `aihub-status aihub-status--${kind}` }, message);
+    const el = h('div', { class: `aisapp-status aisapp-status--${kind}` }, message);
     mountEl.prepend(el);
     if (kind !== 'error') {
       setTimeout(() => el.remove(), 4000);
@@ -119,7 +119,7 @@
 
   function renderNotesEditor(mountEl, projectId, initialNotes) {
     const textarea = h('textarea', {
-      class: 'aihub-input aihub-textarea aihub-notes-textarea',
+      class: 'aisapp-input aisapp-textarea aisapp-notes-textarea',
       placeholder: 'Free-form notes/instructions for the AI sessions working on this project\u2026',
       rows: '5',
     });
@@ -127,7 +127,7 @@
 
     let saveTimer = null;
     let lastSavedValue = initialNotes || '';
-    const statusEl = h('span', { class: 'aihub-notes-save-status' }, '');
+    const statusEl = h('span', { class: 'aisapp-notes-save-status' }, '');
 
     async function save() {
       const value = textarea.value;
@@ -167,9 +167,9 @@
       save();
     });
 
-    return h('div', { class: 'aihub-instructions-block' }, [
-      h('div', { class: 'aihub-block-header' }, [
-        h('h2', { class: 'aihub-section-title' }, 'Notes'),
+    return h('div', { class: 'aisapp-instructions-block' }, [
+      h('div', { class: 'aisapp-block-header' }, [
+        h('h2', { class: 'aisapp-section-title' }, 'Notes'),
         statusEl,
       ]),
       textarea,
@@ -181,12 +181,12 @@
   // -------------------------------------------------------------
 
   function renderFunctionalityItem(item) {
-    return h('div', { class: 'aihub-functionality-item' }, [
-      h('div', { class: 'aihub-functionality-name' }, item.name),
+    return h('div', { class: 'aisapp-functionality-item' }, [
+      h('div', { class: 'aisapp-functionality-name' }, item.name),
       item.description
-        ? h('div', { class: 'aihub-functionality-desc' }, item.description)
+        ? h('div', { class: 'aisapp-functionality-desc' }, item.description)
         : null,
-      h('div', { class: 'aihub-functionality-meta' }, [
+      h('div', { class: 'aisapp-functionality-meta' }, [
         item.createdBy ? h('span', {}, item.createdBy) : null,
         item.createdAt ? h('span', {}, timeAgo(item.createdAt)) : null,
       ]),
@@ -194,13 +194,13 @@
   }
 
   function renderFunctionalitySection(mountEl, projectId, initialList, onChanged) {
-    const listEl = h('div', { class: 'aihub-functionality-list' });
+    const listEl = h('div', { class: 'aisapp-functionality-list' });
 
     function renderList(items) {
       clear(listEl);
       if (!items || items.length === 0) {
         listEl.appendChild(
-          h('p', { class: 'aihub-empty-state' }, 'No functionalities defined yet.')
+          h('p', { class: 'aisapp-empty-state' }, 'No functionalities defined yet.')
         );
         return;
       }
@@ -217,19 +217,19 @@
 
     const nameInput = h('input', {
       type: 'text',
-      class: 'aihub-input',
+      class: 'aisapp-input',
       placeholder: 'Functionality name',
       maxlength: '120',
     });
     const descInput = h('textarea', {
-      class: 'aihub-input aihub-textarea',
+      class: 'aisapp-input aisapp-textarea',
       placeholder: 'What should this do? (optional)',
       rows: '2',
       maxlength: '400',
     });
     const submitBtn = h(
       'button',
-      { class: 'aihub-btn aihub-btn--primary', type: 'submit' },
+      { class: 'aisapp-btn aisapp-btn--primary', type: 'submit' },
       'Add functionality'
     );
     let isSubmitting = false;
@@ -237,7 +237,7 @@
     const form = h(
       'form',
       {
-        class: 'aihub-create-form',
+        class: 'aisapp-create-form',
         onsubmit: async (e) => {
           e.preventDefault();
           if (isSubmitting) return;
@@ -269,8 +269,8 @@
       [nameInput, descInput, submitBtn]
     );
 
-    const section = h('div', { class: 'aihub-instructions-block' }, [
-      h('h2', { class: 'aihub-section-title' }, 'Functionalities'),
+    const section = h('div', { class: 'aisapp-instructions-block' }, [
+      h('h2', { class: 'aisapp-section-title' }, 'Functionalities'),
       form,
       listEl,
     ]);
@@ -285,16 +285,16 @@
   // -------------------------------------------------------------
 
   function statusBadgeClass(status) {
-    if (status === 'approved') return 'aihub-badge--approved';
-    if (status === 'rejected') return 'aihub-badge--rejected';
-    return 'aihub-badge--pending';
+    if (status === 'approved') return 'aisapp-badge--approved';
+    if (status === 'rejected') return 'aisapp-badge--rejected';
+    return 'aisapp-badge--pending';
   }
 
   function renderAssignmentItem(mountEl, projectId, assignment, onChanged) {
     const approveBtn = h(
       'button',
       {
-        class: 'aihub-btn aihub-btn--primary aihub-btn--sm',
+        class: 'aisapp-btn aisapp-btn--primary aisapp-btn--sm',
         onclick: async () => {
           approveBtn.disabled = true;
           rejectBtn.disabled = true;
@@ -318,7 +318,7 @@
     const rejectBtn = h(
       'button',
       {
-        class: 'aihub-btn aihub-btn--sm',
+        class: 'aisapp-btn aisapp-btn--sm',
         onclick: async () => {
           approveBtn.disabled = true;
           rejectBtn.disabled = true;
@@ -341,36 +341,36 @@
 
     const isPending = assignment.status === 'pending';
 
-    return h('div', { class: 'aihub-assignment-item' }, [
-      h('div', { class: 'aihub-assignment-top' }, [
-        h('div', { class: 'aihub-assignment-title' }, [
-          h('span', { class: 'aihub-assignment-fn' }, assignment.functionName),
+    return h('div', { class: 'aisapp-assignment-item' }, [
+      h('div', { class: 'aisapp-assignment-top' }, [
+        h('div', { class: 'aisapp-assignment-title' }, [
+          h('span', { class: 'aisapp-assignment-fn' }, assignment.functionName),
           ' \u2192 ',
-          h('span', { class: 'aihub-assignment-target' }, assignment.sessionLabel || assignment.sessionId),
+          h('span', { class: 'aisapp-assignment-target' }, assignment.sessionLabel || assignment.sessionId),
         ]),
-        h('span', { class: `aihub-badge ${statusBadgeClass(assignment.status)}` }, assignment.status),
+        h('span', { class: `aisapp-badge ${statusBadgeClass(assignment.status)}` }, assignment.status),
       ]),
       assignment.reason
-        ? h('div', { class: 'aihub-assignment-reason' }, assignment.reason)
+        ? h('div', { class: 'aisapp-assignment-reason' }, assignment.reason)
         : null,
-      h('div', { class: 'aihub-assignment-meta' }, [
+      h('div', { class: 'aisapp-assignment-meta' }, [
         assignment.proposedBy ? h('span', {}, `Proposed by ${assignment.proposedBy}`) : null,
         assignment.createdAt ? h('span', {}, timeAgo(assignment.createdAt)) : null,
       ]),
       isPending
-        ? h('div', { class: 'aihub-assignment-actions' }, [approveBtn, rejectBtn])
+        ? h('div', { class: 'aisapp-assignment-actions' }, [approveBtn, rejectBtn])
         : null,
     ]);
   }
 
   function renderAssignmentSection(mountEl, projectId, initialList, onChanged) {
-    const listEl = h('div', { class: 'aihub-assignment-list' });
+    const listEl = h('div', { class: 'aisapp-assignment-list' });
 
     function renderList(items) {
       clear(listEl);
       if (!items || items.length === 0) {
         listEl.appendChild(
-          h('p', { class: 'aihub-empty-state' }, 'No assignment proposals yet.')
+          h('p', { class: 'aisapp-empty-state' }, 'No assignment proposals yet.')
         );
         return;
       }
@@ -389,11 +389,11 @@
     }
     renderList(initialList);
 
-    const section = h('div', { class: 'aihub-instructions-block' }, [
-      h('h2', { class: 'aihub-section-title' }, 'Function assignments'),
+    const section = h('div', { class: 'aisapp-instructions-block' }, [
+      h('h2', { class: 'aisapp-section-title' }, 'Function assignments'),
       h(
         'p',
-        { class: 'aihub-block-subtitle' },
+        { class: 'aisapp-block-subtitle' },
         'Proposals from you or an AI session. Nothing is assigned until you approve it here.'
       ),
       listEl,
@@ -416,19 +416,19 @@
     async init(mountEl, projectId) {
       clear(mountEl);
 
-      mountEl.appendChild(h('h1', { class: 'aihub-page-title' }, 'Instructions & Functionalities'));
+      mountEl.appendChild(h('h1', { class: 'aisapp-page-title' }, 'Instructions & Functionalities'));
 
       let data;
       try {
         data = await api(projectId, '/');
       } catch (err) {
         mountEl.appendChild(
-          h('div', { class: 'aihub-error-state' }, [
+          h('div', { class: 'aisapp-error-state' }, [
             h('p', {}, `Couldn't load instructions: ${err.message}`),
             h(
               'button',
               {
-                class: 'aihub-btn aihub-btn--subtle',
+                class: 'aisapp-btn aisapp-btn--subtle',
                 onclick: () => InstructionsPage.init(mountEl, projectId),
               },
               'Try again'
@@ -470,7 +470,7 @@
       mountEl.appendChild(assignmentCtl.section);
 
       // Shared Activity Timeline, per INSTRUCTIONS.md Session 2 scope.
-      const activityMount = h('div', { class: 'aihub-instructions-block' });
+      const activityMount = h('div', { class: 'aisapp-instructions-block' });
       mountEl.appendChild(activityMount);
       let activityCtl = { destroy() {} };
       if (window.ActivityTimeline) {
