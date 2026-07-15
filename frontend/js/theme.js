@@ -5,7 +5,7 @@
  *
  * Precedence: explicit user choice (localStorage) > system preference
  * (prefers-color-scheme) > dark (this app's existing default, per
- * Session 3's design). Exposes window.AihubTheme for the header
+ * Session 3's design). Exposes window.AisappTheme for the header
  * toggle button in router.js to call.
  * ------------------------------------------------------------------
  */
@@ -13,7 +13,8 @@
 (function () {
   'use strict';
 
-  const STORAGE_KEY = 'aihub:theme';
+  const STORAGE_KEY = 'aisapp:theme';
+  const STORAGE_KEY_OLD = 'aihub:theme'; // pre-rename key, see below
 
   function systemPrefersLight() {
     return window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
@@ -21,7 +22,18 @@
 
   function getStoredTheme() {
     try {
-      return localStorage.getItem(STORAGE_KEY); // 'light' | 'dark' | null
+      const current = localStorage.getItem(STORAGE_KEY); // 'light' | 'dark' | null
+      if (current !== null) return current;
+      // One-time migration for the "aihub" -> "aisapp" naming rename,
+      // same reasoning as projects.js's currentProjectId/deviceSecret:
+      // don't silently drop an existing preference just because the
+      // key it's stored under changed.
+      const legacy = localStorage.getItem(STORAGE_KEY_OLD);
+      if (legacy !== null) {
+        localStorage.setItem(STORAGE_KEY, legacy);
+        localStorage.removeItem(STORAGE_KEY_OLD);
+      }
+      return legacy;
     } catch {
       return null; // localStorage can throw in some locked-down contexts
     }
@@ -49,7 +61,7 @@
     if (meta) {
       meta.setAttribute('content', theme === 'light' ? '#f6f7f9' : '#0d0d0f');
     }
-    document.dispatchEvent(new CustomEvent('aihub:themechanged', { detail: { theme } }));
+    document.dispatchEvent(new CustomEvent('aisapp:themechanged', { detail: { theme } }));
   }
 
   function init() {
@@ -67,5 +79,5 @@
 
   init();
 
-  window.AihubTheme = { toggle, current: currentTheme };
+  window.AisappTheme = { toggle, current: currentTheme };
 })();
