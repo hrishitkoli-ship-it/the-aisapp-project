@@ -18,10 +18,10 @@
  * KEY SOURCE: the encryption key is the part of your composite AI
  * token after the first '.' -- see tokens.js's composeToken /
  * parseCompositeToken on the server side for how it got there. e.g.
- * given a token like "aihub_AbC123....XyZ789", everything after the
+ * given a token like "aisapp_AbC123....XyZ789", everything after the
  * first "." is your base64url-encoded 256-bit key. Parse it out like:
  *
- *   const fullToken = "aihub_AbC123....XyZ789"; // from your env/config
+ *   const fullToken = "aisapp_AbC123....XyZ789"; // from your env/config
  *   const dotIndex = fullToken.indexOf('.');
  *   const authToken = fullToken.slice(0, dotIndex);       // for Authorization: Bearer
  *   const encryptionKeyB64url = fullToken.slice(dotIndex + 1); // for this module
@@ -112,3 +112,4 @@ function decryptContent(envelopeBase64, encryptionKeyB64url) {
 }
 
 module.exports = { encryptContent, decryptContent };
+
