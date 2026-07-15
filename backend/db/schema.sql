@@ -100,7 +100,32 @@
 CREATE TABLE aisapp_devices (
   code TEXT PRIMARY KEY NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  device_secret_hash TEXT
+  device_secret_hash TEXT,
+  -- NULL until the human accepts Terms & Privacy on the Settings
+  -- page. Enforced server-side on file-write routes (not just a
+  -- client-side UI gate) so it can't be bypassed by an AI agent
+  -- calling the API directly without ever loading the frontend.
+  tos_accepted_at TEXT
+);
+
+-- ---- Migration blobs ----
+-- Short-lived, single-use, encrypted-client-side-only relay for
+-- moving a secret (typically a project token) from one device's
+-- browser to another via a link, safer than pasting it in plaintext
+-- through a messaging app. The server stores and serves ciphertext
+-- only -- it never sees the encryption key, which travels solely in
+-- the link's URL fragment (the part after '#'), never transmitted in
+-- any HTTP request. Deleted immediately on first successful fetch
+-- (single-use) or once expired, whichever comes first -- this table
+-- is deliberately NOT subject to the per-project/per-account size
+-- caps above, since it holds transient relay data, not project
+-- content; a fixed per-row size check happens in application code
+-- instead (see store.js).
+CREATE TABLE aisapp_migration_blobs (
+  id TEXT PRIMARY KEY,
+  ciphertext TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  expires_at TEXT NOT NULL
 );
 
 CREATE TABLE aisapp_projects (
@@ -203,4 +228,5 @@ WHEN (
 BEGIN
   SELECT RAISE(ABORT, 'ACCOUNT_CAP:Your account has reached its ~5MB total storage limit.');
 END;
+
 
