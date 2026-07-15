@@ -112,4 +112,3 @@ function decryptContent(envelopeBase64, encryptionKeyB64url) {
 }
 
 module.exports = { encryptContent, decryptContent };
-
