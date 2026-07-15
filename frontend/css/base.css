@@ -3,7 +3,7 @@
  * ------------------------------------------------------------------
  * Session 1 lane: shared design tokens + app-shell layout.
  *
- * This is the canonical home for the --aihub-* custom properties.
+ * This is the canonical home for the --aisapp-* custom properties.
  * projects.css (Session 3) already consumes these same variable
  * names -- its own :root block has been removed in favor of this
  * file, so there is exactly one place these values are defined. The
@@ -20,50 +20,50 @@
 
 :root {
   /* ---- Dark theme (default) -- values as shipped by Session 3 ---- */
-  --aihub-bg: #0d0d0f;
-  --aihub-surface: #17171a;
-  --aihub-surface-raised: #1f1f23;
-  --aihub-border: #2a2a2e;
-  --aihub-text: #e8e8ea;
-  --aihub-text-dim: #9a9aa0;
-  --aihub-accent: #4d8dff;
-  --aihub-accent-dim: #1f3a66;
-  --aihub-danger: #ff5c5c;
-  --aihub-danger-dim: #4a2020;
-  --aihub-success: #4ade80;
-  --aihub-success-dim: #163a26;
-  --aihub-pending: #e0a030;
-  --aihub-pending-dim: #4a3a16;
-  --aihub-radius: 10px;
+  --aisapp-bg: #0d0d0f;
+  --aisapp-surface: #17171a;
+  --aisapp-surface-raised: #1f1f23;
+  --aisapp-border: #2a2a2e;
+  --aisapp-text: #e8e8ea;
+  --aisapp-text-dim: #9a9aa0;
+  --aisapp-accent: #4d8dff;
+  --aisapp-accent-dim: #1f3a66;
+  --aisapp-danger: #ff5c5c;
+  --aisapp-danger-dim: #4a2020;
+  --aisapp-success: #4ade80;
+  --aisapp-success-dim: #163a26;
+  --aisapp-pending: #e0a030;
+  --aisapp-pending-dim: #4a3a16;
+  --aisapp-radius: 10px;
 
   /* ---- Typography: system stacks only, no font CDN --------------
      Keeps the app fully offline-capable on first load, matching its
      own local-first premise. Differentiation between "display" and
      "body" roles comes from weight/tracking/case, not separate
      imported families -- see frontend-design notes for why. */
-  --aihub-font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu,
+  --aisapp-font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu,
     Cantarell, sans-serif;
-  --aihub-font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Roboto Mono', Consolas,
+  --aisapp-font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Roboto Mono', Consolas,
     monospace;
 
   color-scheme: dark;
 }
 
 [data-theme='light'] {
-  --aihub-bg: #f6f7f9;
-  --aihub-surface: #ffffff;
-  --aihub-surface-raised: #ececef;
-  --aihub-border: #dcdde2;
-  --aihub-text: #17171a;
-  --aihub-text-dim: #6b6b72;
-  --aihub-accent: #2f6fe0;
-  --aihub-accent-dim: #dbe7fc;
-  --aihub-danger: #d33f3f;
-  --aihub-danger-dim: #fbe3e3;
-  --aihub-success: #2f9e5c;
-  --aihub-success-dim: #e2f5e9;
-  --aihub-pending: #b5791f;
-  --aihub-pending-dim: #faedd9;
+  --aisapp-bg: #f6f7f9;
+  --aisapp-surface: #ffffff;
+  --aisapp-surface-raised: #ececef;
+  --aisapp-border: #dcdde2;
+  --aisapp-text: #17171a;
+  --aisapp-text-dim: #6b6b72;
+  --aisapp-accent: #2f6fe0;
+  --aisapp-accent-dim: #dbe7fc;
+  --aisapp-danger: #d33f3f;
+  --aisapp-danger-dim: #fbe3e3;
+  --aisapp-success: #2f9e5c;
+  --aisapp-success-dim: #e2f5e9;
+  --aisapp-pending: #b5791f;
+  --aisapp-pending-dim: #faedd9;
 
   color-scheme: light;
 }
@@ -81,9 +81,9 @@ html, body {
 }
 
 body {
-  background: var(--aihub-bg);
-  color: var(--aihub-text);
-  font-family: var(--aihub-font-body);
+  background: var(--aisapp-bg);
+  color: var(--aisapp-text);
+  font-family: var(--aisapp-font-body);
   -webkit-font-smoothing: antialiased;
   transition: background-color 0.15s ease, color 0.15s ease;
 }
@@ -105,11 +105,11 @@ button:active {
 }
 
 a {
-  color: var(--aihub-accent);
+  color: var(--aisapp-accent);
 }
 
 code, pre {
-  font-family: var(--aihub-font-mono);
+  font-family: var(--aisapp-font-mono);
 }
 
 /* Respect reduced-motion preferences: kill the theme-switch fade, the
@@ -127,7 +127,7 @@ code, pre {
 
 /* Visible keyboard focus everywhere -- quality floor, not optional. */
 :focus-visible {
-  outline: 2px solid var(--aihub-accent);
+  outline: 2px solid var(--aisapp-accent);
   outline-offset: 2px;
 }
 
@@ -146,8 +146,8 @@ code, pre {
   gap: 10px;
   padding: 10px 14px;
   padding-top: max(10px, env(safe-area-inset-top));
-  background: var(--aihub-surface);
-  border-bottom: 1px solid var(--aihub-border);
+  background: var(--aisapp-surface);
+  border-bottom: 1px solid var(--aisapp-border);
   position: sticky;
   top: 0;
   z-index: 100;
@@ -157,10 +157,10 @@ code, pre {
   display: none;
 }
 
-.aihub-header-back {
+.aisapp-header-back {
   background: transparent;
   border: none;
-  color: var(--aihub-text-dim);
+  color: var(--aisapp-text-dim);
   font-size: 1.2rem;
   cursor: pointer;
   padding: 4px 8px;
@@ -168,12 +168,12 @@ code, pre {
   border-radius: 8px;
 }
 
-.aihub-header-back:hover {
-  color: var(--aihub-text);
-  background: var(--aihub-surface-raised);
+.aisapp-header-back:hover {
+  color: var(--aisapp-text);
+  background: var(--aisapp-surface-raised);
 }
 
-.aihub-header-title {
+.aisapp-header-title {
   flex: 1;
   min-width: 0;
   font-weight: 700;
@@ -184,20 +184,20 @@ code, pre {
   text-overflow: ellipsis;
 }
 
-.aihub-header-eyebrow {
+.aisapp-header-eyebrow {
   display: block;
   font-size: 0.65rem;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--aihub-text-dim);
+  color: var(--aisapp-text-dim);
   margin-bottom: 1px;
 }
 
-.aihub-theme-toggle {
-  background: var(--aihub-surface-raised);
-  border: 1px solid var(--aihub-border);
-  color: var(--aihub-text);
+.aisapp-theme-toggle {
+  background: var(--aisapp-surface-raised);
+  border: 1px solid var(--aisapp-border);
+  color: var(--aisapp-text);
   border-radius: 999px;
   width: 38px;
   height: 38px;
@@ -226,8 +226,8 @@ code, pre {
    native app navigation conventions rather than a top tab strip. */
 #app-tabbar {
   display: flex;
-  background: var(--aihub-surface);
-  border-top: 1px solid var(--aihub-border);
+  background: var(--aisapp-surface);
+  border-top: 1px solid var(--aisapp-border);
   padding-bottom: env(safe-area-inset-bottom);
   position: sticky;
   bottom: 0;
@@ -238,11 +238,11 @@ code, pre {
   display: none;
 }
 
-.aihub-tab {
+.aisapp-tab {
   flex: 1;
   background: transparent;
   border: none;
-  color: var(--aihub-text-dim);
+  color: var(--aisapp-text-dim);
   padding: 10px 4px 8px;
   font-size: 0.7rem;
   font-weight: 600;
@@ -254,34 +254,34 @@ code, pre {
   gap: 3px;
 }
 
-.aihub-tab-icon {
+.aisapp-tab-icon {
   font-size: 1.15rem;
   line-height: 1;
 }
 
-.aihub-tab.is-active {
-  color: var(--aihub-accent);
+.aisapp-tab.is-active {
+  color: var(--aisapp-accent);
 }
 
-.aihub-tab:hover {
-  color: var(--aihub-text);
+.aisapp-tab:hover {
+  color: var(--aisapp-text);
 }
 
-.aihub-tab.is-active:hover {
-  color: var(--aihub-accent);
+.aisapp-tab.is-active:hover {
+  color: var(--aisapp-accent);
 }
 
 /* ---- Small shared utility classes used across pages ------------- */
 
-.aihub-eyebrow {
+.aisapp-eyebrow {
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: var(--aihub-text-dim);
+  color: var(--aisapp-text-dim);
 }
 
-.aihub-icon {
+.aisapp-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -289,7 +289,7 @@ code, pre {
   flex-shrink: 0;
 }
 
-.aihub-icon svg {
+.aisapp-icon svg {
   display: block;
 }
 
@@ -297,21 +297,21 @@ code, pre {
    so the two align vertically and get a consistent gap -- explicit
    class rather than a :has() selector for broader mobile browser
    compatibility. */
-.aihub-icon-row {
+.aisapp-icon-row {
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
 
-.aihub-mono {
-  font-family: var(--aihub-font-mono);
+.aisapp-mono {
+  font-family: var(--aisapp-font-mono);
   font-size: 0.85rem;
 }
 
-.aihub-panel {
-  background: var(--aihub-surface);
-  border: 1px solid var(--aihub-border);
-  border-radius: var(--aihub-radius);
+.aisapp-panel {
+  background: var(--aisapp-surface);
+  border: 1px solid var(--aisapp-border);
+  border-radius: var(--aisapp-radius);
   padding: 14px;
 }
 
