@@ -56,6 +56,7 @@
  * ------------------------------------------------------------------
  */
 
+const crypto = require('crypto');
 const { connect } = require('@tursodatabase/serverless');
 
 const TURSO_DATABASE_URL = process.env.TURSO_DATABASE_URL;
@@ -236,10 +237,17 @@ async function removeProjectFromIndex(projectId) {
 // ---------------------------------------------------------------------
 
 async function getDevice() {
-  const result = await run('SELECT code, created_at, device_secret_hash FROM aisapp_devices ORDER BY created_at ASC LIMIT 1');
+  const result = await run(
+    'SELECT code, created_at, device_secret_hash, tos_accepted_at FROM aisapp_devices ORDER BY created_at ASC LIMIT 1'
+  );
   const row = result.rows[0];
   return row
-    ? { code: row.code, createdAt: row.created_at, deviceSecretHash: row.device_secret_hash || null }
+    ? {
+        code: row.code,
+        createdAt: row.created_at,
+        deviceSecretHash: row.device_secret_hash || null,
+        tosAcceptedAt: row.tos_accepted_at || null,
+      }
     : null;
 }
 
@@ -332,6 +340,85 @@ async function getOrCreateDeviceCode(generateDeviceCode) {
   const code = generateDeviceCode();
   await saveDevice({ code, createdAt: new Date().toISOString() });
   return code;
+}
+
+/**
+ * Marks this device's Terms & Privacy as accepted. Idempotent --
+ * accepting twice just updates the timestamp, no error.
+ */
+async function acceptTos(deviceCode) {
+  await run('UPDATE aisapp_devices SET tos_accepted_at = ? WHERE code = ?', [
+    new Date().toISOString(),
+    deviceCode,
+  ]);
+}
+
+/** True only if this device exists AND has explicitly accepted. A
+ *  device that doesn't exist yet (shouldn't normally happen for a
+ *  file-write call, since creating the project that owns the file
+ *  already required a device to exist -- see routes/projects.js) is
+ *  treated as NOT accepted, failing closed rather than open. */
+async function hasAcceptedTos(deviceCode) {
+  if (!deviceCode) return false;
+  const result = await run('SELECT tos_accepted_at FROM aisapp_devices WHERE code = ?', [deviceCode]);
+  return !!result.rows[0]?.tos_accepted_at;
+}
+
+// ---------------------------------------------------------------------
+// Migration blobs (see schema.sql's aisapp_migration_blobs comment for
+// the full design). Fixed size ceiling enforced here in application
+// code rather than a DB trigger, since these rows are deliberately
+// outside the per-project/per-account size-cap system above -- a
+// trigger written against THOSE limits would be the wrong limit for
+// a completely different kind of data.
+// ---------------------------------------------------------------------
+
+const MIGRATION_BLOB_MAX_BYTES = 50 * 1024; // 50KB -- generous for a handful of tokens, not a data-smuggling route
+const MIGRATION_BLOB_TTL_MINUTES = 10;
+
+class MigrationBlobTooLargeError extends Error {
+  constructor(message) {
+    super(message);
+    this.statusCode = 413;
+  }
+}
+
+async function createMigrationBlob(ciphertext) {
+  const byteSize = Buffer.byteLength(ciphertext, 'utf-8');
+  if (byteSize > MIGRATION_BLOB_MAX_BYTES) {
+    throw new MigrationBlobTooLargeError(
+      `Migration payload is ${byteSize} bytes; the limit is ${MIGRATION_BLOB_MAX_BYTES} bytes ` +
+        '(this is meant for a few tokens/notes, not bulk data).'
+    );
+  }
+
+  const id = crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+  const expiresAt = new Date(Date.now() + MIGRATION_BLOB_TTL_MINUTES * 60 * 1000).toISOString();
+  await run('INSERT INTO aisapp_migration_blobs (id, ciphertext, expires_at) VALUES (?, ?, ?)', [
+    id,
+    ciphertext,
+    expiresAt,
+  ]);
+  return { id, expiresAt };
+}
+
+/**
+ * Fetches and IMMEDIATELY DELETES a migration blob (single-use).
+ * Returns null if it never existed, already expired, or was already
+ * consumed -- callers can't distinguish these three cases from the
+ * return value alone, which is deliberate: telling an attacker
+ * "that ID never existed" vs. "that ID expired" vs. "that ID was
+ * already used" leaks more than a human redeeming their own link
+ * ever needs to know.
+ */
+async function consumeMigrationBlob(id) {
+  const result = await run(
+    "SELECT ciphertext FROM aisapp_migration_blobs WHERE id = ? AND expires_at > datetime('now')",
+    [id]
+  );
+  const row = result.rows[0];
+  await run('DELETE FROM aisapp_migration_blobs WHERE id = ?', [id]);
+  return row ? row.ciphertext : null;
 }
 
 // ---------------------------------------------------------------------
@@ -450,8 +537,11 @@ module.exports = {
   InvalidProjectIdError,
   ProjectSizeLimitError,
   AccountSizeLimitError,
+  MigrationBlobTooLargeError,
   PROJECT_SIZE_LIMIT_BYTES,
   ACCOUNT_SIZE_LIMIT_BYTES,
+  MIGRATION_BLOB_MAX_BYTES,
+  MIGRATION_BLOB_TTL_MINUTES,
   assertValidProjectId,
   getProjectRowSize,
   run,
@@ -465,6 +555,10 @@ module.exports = {
   getOrCreateDeviceCode,
   getOrCreateDeviceSecretHash,
   setDeviceSecretHash,
+  acceptTos,
+  hasAcceptedTos,
+  createMigrationBlob,
+  consumeMigrationBlob,
   getProject,
   saveProject,
   getSessions,
@@ -474,3 +568,4 @@ module.exports = {
   getActivity,
   appendActivity,
 };
+
