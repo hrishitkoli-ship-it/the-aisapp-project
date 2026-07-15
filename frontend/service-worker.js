@@ -16,7 +16,7 @@
  * ------------------------------------------------------------------
  */
 
-const CACHE_NAME = 'aisapp-shell-v3';
+const CACHE_NAME = 'aisapp-shell-v4';
 
 const SHELL_ASSETS = [
   '/',
