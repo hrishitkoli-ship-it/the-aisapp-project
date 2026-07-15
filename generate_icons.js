@@ -9,7 +9,7 @@
  * mobile-IDE compatibility.
  *
  * Design direction: a circular badge in a lighter blue (consistent
- * with Session 3's --aihub-accent: #4d8dff already shipped in
+ * with Session 3's --aisapp-accent: #4d8dff already shipped in
  * projects.css) with a thin orbital ring and two small dot accents --
  * this is deliberately in the spirit of a reference style the human
  * pointed to (a light-blue circular "connected" mark), rebuilt as an
@@ -61,7 +61,7 @@ function buildIconPNG(size) {
   const cy = size / 2;
   const R = size * 0.47; // outer badge radius
 
-  // Colors: lighter blue field (consistent with --aihub-accent family),
+  // Colors: lighter blue field (consistent with --aisapp-accent family),
   // a brighter rim highlight, and white-ish ring/dot accents.
   const bgOuter = [92, 150, 224]; // lighter, airier blue than the pure accent
   const bgInner = [58, 116, 199]; // slightly deeper toward the edge for subtle depth
