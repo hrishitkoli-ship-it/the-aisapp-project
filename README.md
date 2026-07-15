@@ -1,6 +1,6 @@
-# AI Collaborative Hub
+# Aisapp
 
-A local-first Progressive Web App for managing a coding project alongside
+A Progressive Web App for managing a coding project alongside
 multiple external AI agents. No cloud login, no database server, no native
 build tools -- everything runs from a single lightweight Node/Express
 process and stores data as plain JSON files on your own device.

@@ -1,6 +1,6 @@
-# INSTRUCTIONS.md — AI Collaborative Hub
+# INSTRUCTIONS.md — Aisapp
 
-**Local-first PWA — human + multiple AI coding sessions, one project, from a phone.**
+**PWA — human + multiple AI coding sessions, one project, from anywhere.**
 **Repo:** `hrishitkoli-ship-it/the-aisapp-project` (private)
 
 Read this fully before touching any file. Ironically, this project is itself
@@ -241,6 +241,69 @@ token comparison, rate-limiting/abuse considerations now that this may go
 public (see `SECURITY.md`), and — per Rule 6 — re-verifying earlier
 findings still hold after adjacent code changes, not just checking them
 once.
+
+---
+
+## Second round: rebrand + bugfix/feature prompt (human-provided, split across Sessions 1/3/4)
+
+The human provided a 16-item fix/feature list, framed against a Next.js
+architecture this app does NOT use (confirmed: this is Express + vanilla
+JS throughout, no React tree anywhere) — explicitly told to "adopt in
+your way" rather than force a React-shaped solution onto a non-React app.
+Solve the INTENT of each item using the stack that's actually here.
+
+**Ship order specified by the human: 1–5 → 7–12 → 14–16 → 13 (optional,
+last).**
+
+Session 4 claimed items 1–5 (rebrand + core bugs) as its own lane, since
+they're the most backend/bugfix-adjacent set. Items 6–16 are NOT yet
+claimed by name — Sessions 1 and 3, pick up from wherever this list
+still shows unclaimed when you read this, following the same ship order,
+and update this section (don't just start silently) so a third session
+doesn't duplicate work.
+
+**Item 1 (rebrand "AI Hub" → "Aisapp") — a real constraint worth reading
+before touching anything else on this list:** grepping case-insensitive
+for the old name returns ~590 hits. ~547 of those are CSS class names
+(`aihub-*`) — internally consistent, invisible to any user, zero
+functional difference either way. Left these alone deliberately, not
+an oversight — renaming 547 occurrences for no visible benefit isn't
+what "rebrand" means to a user, and touching that many call sites
+across HTML/CSS/JS simultaneously is real risk for zero payoff. What
+WAS rebranded: every genuinely visible surface — `<title>`,
+`manifest.json`'s `name`/`short_name` (PWA home-screen label), the
+in-app header text, `README.md`/`SECURITY.md`/`INSTRUCTIONS.md`/
+`SKILL.md`'s titles, the server's console startup banner.
+
+**Two categories deliberately NOT renamed, and must stay that way:**
+- The token prefix format itself (`aihub_<deviceCode>_<key>` — see
+  `utils/tokens.js`). Changing this breaks every existing token's
+  format and whatever `verifyToken`/`parseCompositeToken` expect to
+  parse. This is a wire format, not branding.
+- The `localStorage` key `aihub:deviceSecret` (see
+  `frontend/js/projects.js`). Changing this silently orphans every
+  already-saved device secret on every device that's already used the
+  app — a real, currently-live outage risk given the device-secret
+  flow was JUST built and verified working end-to-end this session
+  (see the Session 4 ledger entry on the Turso schema fix). If a
+  future session genuinely wants to rename this too, it needs an
+  explicit migration (read the old key, migrate its value to the new
+  key name, THEN remove the old one) — not a plain rename.
+
+If you pick up any later item on this list and it touches either of
+these two categories, treat that the same way: it's a breaking wire-
+format/storage-key change, not a cosmetic rename, and needs the same
+care.
+
+**Item 6 (auto-synced SKILL.md)** was partially addressed as a side
+effect of the rebrand (SKILL.md's content updated to match reality —
+Vercel URL example instead of a LAN IP, "local-first" language
+corrected) but the actual ASK — SKILL.md generated from a single
+source-of-truth doc, validated in CI/build so it can't silently drift
+from the real routes — was NOT built. That's real infrastructure work
+(a build step, a doc-to-markdown generator, a CI check) squarely
+outside a security-lane's scope and genuinely large enough to be its
+own item for whichever session picks it up next.
 
 ---
 

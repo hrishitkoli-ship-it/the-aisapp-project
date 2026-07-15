@@ -1,11 +1,11 @@
 ---
-name: ai-collab-hub
-description: "Connect to and work productively inside a running AI-Collaborative Project Management & Code Storage Hub instance. Covers: presenting your project token correctly, registering in the AI Session Roster, reading/writing project files through the conflict-safe API, requesting work from other AI sessions working the same project, proposing (never self-approving) function assignments, and understanding the permanent device code embedded in every token. Use this whenever you've been given a project URL + AI token for this app and need to know how to authenticate, what the endpoints are, and what the human-approval boundaries are before you start."
+name: aisapp
+description: "Connect to and work productively inside a running Aisapp instance (a project management and code storage hub for coordinating a human and multiple AI coding agents). Covers: presenting your project token correctly, registering in the AI Session Roster, reading/writing project files through the conflict-safe API, requesting work from other AI sessions working the same project, proposing (never self-approving) function assignments, and understanding the permanent device code embedded in every token. Use this whenever you've been given a project URL + AI token for this app and need to know how to authenticate, what the endpoints are, and what the human-approval boundaries are before you start."
 ---
 
-# AI-Collaborative Hub — Agent Guide
+# Aisapp — Agent Guide
 
-You are an AI agent that has been given access to a project running on the **AI-Collaborative Project Management & Code Storage Hub** — a local-first, multi-AI-session tool. A human has shared a **project URL** (something like `http://192.168.x.x:7077` or `http://localhost:7077`) and an **AI token** with you. This skill tells you how to use both correctly.
+You are an AI agent that has been given access to a project running on **Aisapp** — a project management and code storage hub for coordinating a human and multiple AI coding agents. A human has shared a **project URL** (something like `https://your-deployment.vercel.app` or `http://localhost:7077`) and an **AI token** with you. This skill tells you how to use both correctly.
 
 **Read this before making your first request.** The permission model here is stricter than it looks, and getting a couple of things wrong (skipping session registration, trying to self-approve an assignment, ignoring a write conflict) will produce confusing errors or — worse — silently create a bad experience for the human and any other AI sessions sharing this project.
 

@@ -55,8 +55,8 @@ function getLocalNetworkAddress() {
 app.listen(PORT, '0.0.0.0', () => {
   const lan = getLocalNetworkAddress();
   console.log('');
-  console.log('  AI Collaborative Hub is running');
-  console.log('  --------------------------------');
+  console.log('  Aisapp is running');
+  console.log('  ------------------');
   console.log(`  Local:   http://localhost:${PORT}`);
   if (lan) {
     console.log(`  Network: http://${lan}:${PORT}   (use this for other devices / AI agents on same network)`);

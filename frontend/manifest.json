@@ -1,7 +1,7 @@
 {
-  "name": "AI Collaborative Hub",
-  "short_name": "AI Hub",
-  "description": "Local-first project hub for coordinating a human and multiple AI coding agents on one project.",
+  "name": "Aisapp",
+  "short_name": "Aisapp",
+  "description": "Project hub for coordinating a human and multiple AI coding agents on one project.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

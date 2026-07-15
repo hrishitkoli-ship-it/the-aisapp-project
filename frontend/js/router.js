@@ -99,7 +99,7 @@
     appHeader.innerHTML = '';
     const title = document.createElement('div');
     title.className = 'aihub-header-title';
-    title.textContent = 'AI Collaborative Hub';
+    title.textContent = 'Aisapp';
     appHeader.appendChild(title);
     appHeader.appendChild(renderThemeToggleButton());
   }

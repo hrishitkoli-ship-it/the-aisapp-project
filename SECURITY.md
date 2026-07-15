@@ -1,4 +1,4 @@
-# SECURITY.md — AI-Collaborative Hub
+# SECURITY.md — Aisapp
 
 This document was originally scoped to Session 4 (see `INSTRUCTIONS.md`'s
 lane assignments) as: *"Write a short SECURITY.md documenting the trust
