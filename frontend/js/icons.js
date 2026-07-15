@@ -13,7 +13,7 @@
  * across the dark/light theme toggle) with zero icon-specific theme
  * variants needed.
  *
- * Usage: window.AihubIcons.svg('folder', { size: 16, className: 'foo' })
+ * Usage: window.AisappIcons.svg('folder', { size: 16, className: 'foo' })
  * returns an SVG markup string, ready to drop into innerHTML or parse
  * into a DOM node.
  * ------------------------------------------------------------------
@@ -76,10 +76,10 @@
   /** Convenience: build an actual DOM element rather than a markup string. */
   function el(name, opts = {}) {
     const wrapper = document.createElement('span');
-    wrapper.className = `aihub-icon${opts.className ? ` ${opts.className}` : ''}`;
+    wrapper.className = `aisapp-icon${opts.className ? ` ${opts.className}` : ''}`;
     wrapper.innerHTML = svg(name, opts);
     return wrapper;
   }
 
-  window.AihubIcons = { svg, el, names: Object.keys(PATHS) };
+  window.AisappIcons = { svg, el, names: Object.keys(PATHS) };
 })();
