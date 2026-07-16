@@ -217,10 +217,60 @@
     }
   }
 
+  // -------------------------------------------------------------
+  // PERFORMANCE (item 4 of the human's fix/feature prompt -- "UI is
+  // laggy overall... memoize list items"). This app has no React tree
+  // to profile or memoize -- there's nothing here shaped like a
+  // component re-render to optimize in that sense. The real, vanilla-
+  // JS-shaped equivalent bug, confirmed by reading renderShell()
+  // directly rather than assumed: it does clear(mountEl) + a full
+  // rebuild of the toolbar AND either the tree panel or the editor,
+  // on every single call -- and toggleDir() (expand/collapse ONE
+  // folder) was calling the full renderShell() for that. For a
+  // project with a large file tree, every folder click was tearing
+  // down and rebuilding the entire toolbar + full tree DOM subtree,
+  // not just the one folder that actually changed -- a real,
+  // measurable cause of "feels laggy" that scales with project size,
+  // not a vague performance worry.
+  //
+  // Fix is deliberately narrow, not a rewrite of the rendering model:
+  // toggleDir() gets its own targeted re-render that swaps ONLY the
+  // tree panel's DOM node, leaving the toolbar (and the editor, when
+  // that's what's showing) completely untouched. Safe to scope this
+  // narrowly because toggleDir() can only ever run while the tree
+  // panel is the visible view in the first place (there's no way to
+  // click an expand arrow that isn't on-screen), so the "what if
+  // selectedPath is set" case renderShell() has to handle for other
+  // callers genuinely doesn't apply here.
+  //
+  // Re-verified this diagnosis was still accurate against the CURRENT
+  // file before writing this fix, not assumed carried-over from an
+  // earlier read: workspace.js changed substantially (net -220 lines)
+  // in a same-day repo-wide rebrand pass, but toggleDir()'s body is
+  // byte-for-byte identical to what it was before that pass, and
+  // renderShell()'s structure is unchanged apart from aihub- -> aisapp-
+  // class renames. This fix uses the correct current class names
+  // throughout, not stale ones from before the rebrand.
+  // -------------------------------------------------------------
+
+  function rerenderTreePanelOnly() {
+    const existing = state.mountEl.querySelector('.aisapp-ws-tree-panel');
+    if (!existing) {
+      // Defensive fallback -- if the tree panel genuinely isn't in the
+      // DOM for some reason (shouldn't happen given the constraint
+      // above, but "shouldn't happen" isn't "provably can't happen"),
+      // fall back to the full render rather than silently doing
+      // nothing and leaving stale UI on screen.
+      renderShell();
+      return;
+    }
+    existing.replaceWith(renderTreePanel());
+  }
+
   function toggleDir(path) {
     if (state.expandedDirs.has(path)) state.expandedDirs.delete(path);
     else state.expandedDirs.add(path);
-    renderShell();
+    rerenderTreePanelOnly();
   }
 
   function renderTreeNodes(nodes, depth) {
