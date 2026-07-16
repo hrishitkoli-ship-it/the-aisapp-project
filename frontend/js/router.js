@@ -52,6 +52,21 @@
 
   function parseHash() {
     const hash = window.location.hash.replace(/^#/, '') || '/';
+
+    if (hash === '/settings') {
+      return { name: 'settings' };
+    }
+
+    // #/migrate/:id/:key -- the key is base64url (A-Za-z0-9-_), which
+    // never contains '/', so a plain split on '/' is safe and
+    // unambiguous here, same reasoning as the backend composite
+    // token's '.' delimiter being safe for the same alphabet.
+    const migrateMatch = hash.match(/^\/migrate\/([^/]+)\/([^/]+)/);
+    if (migrateMatch) {
+      const [, migrationId, migrationKey] = migrateMatch;
+      return { name: 'migrate', migrationId, migrationKey };
+    }
+
     const projectMatch = hash.match(/^\/project\/([^/]+)\/([^/]+)/);
     if (projectMatch) {
       const [, projectId, page] = projectMatch;
@@ -101,6 +116,35 @@
     title.className = 'aisapp-header-title';
     title.textContent = 'AI Collaborative Hub';
     appHeader.appendChild(title);
+
+    const settingsBtn = document.createElement('button');
+    settingsBtn.className = 'aisapp-theme-toggle';
+    settingsBtn.type = 'button';
+    settingsBtn.setAttribute('aria-label', 'Settings');
+    settingsBtn.innerHTML = window.AisappIcons.svg('settings', { size: 19 });
+    settingsBtn.addEventListener('click', () => navigateTo('#/settings'));
+    appHeader.appendChild(settingsBtn);
+
+    appHeader.appendChild(renderThemeToggleButton());
+  }
+
+  async function renderHeaderForSettings() {
+    appHeader.classList.remove('is-hidden');
+    appHeader.innerHTML = '';
+
+    const backBtn = document.createElement('button');
+    backBtn.className = 'aisapp-header-back';
+    backBtn.type = 'button';
+    backBtn.setAttribute('aria-label', 'Back to projects');
+    backBtn.innerHTML = window.AisappIcons.svg('chevron-left', { size: 20 });
+    backBtn.addEventListener('click', () => navigateTo('#/'));
+    appHeader.appendChild(backBtn);
+
+    const title = document.createElement('div');
+    title.className = 'aisapp-header-title';
+    title.textContent = 'Settings';
+    appHeader.appendChild(title);
+
     appHeader.appendChild(renderThemeToggleButton());
   }
 
@@ -209,6 +253,24 @@
     appMain.scrollTop = 0; // reset scroll position on every navigation
     teardownCurrentPage(); // stop whatever was polling on the previous page/project
 
+    if (route.name === 'settings') {
+      hideTabbar();
+      renderHeaderForSettings();
+      if (window.SettingsPage) {
+        window.SettingsPage.init(appMount);
+      } else {
+        renderNotYetBuilt('Settings');
+      }
+      return;
+    }
+
+    if (route.name === 'migrate') {
+      hideTabbar();
+      renderHeaderForSettings(); // reuses the same back-to-list chrome
+      renderMigrationRedeem(route.migrationId, route.migrationKey);
+      return;
+    }
+
     if (route.name === 'list') {
       hideTabbar();
       renderHeaderForList();
@@ -259,6 +321,48 @@
     }
   }
 
+  /** Renders the one-shot "you've been sent a secret" redemption view
+   *  for a #/migrate/:id/:key link. Not a persistent page module like
+   *  Settings -- this is a single async action with three outcomes
+   *  (loading, success showing the decrypted text, or error), so it's
+   *  simple enough to keep inline here rather than as a separate file. */
+  async function renderMigrationRedeem(id, key) {
+    appMount.innerHTML = '';
+    const panel = document.createElement('div');
+    panel.className = 'aisapp-panel';
+    panel.style.textAlign = 'center';
+    panel.innerHTML = '<p style="margin:0;color:var(--aisapp-text-dim)">Decrypting\u2026</p>';
+    appMount.appendChild(panel);
+
+    if (!window.AisappMigration) {
+      panel.innerHTML =
+        '<p style="margin:0;color:var(--aisapp-danger)">Migration script didn\u2019t load -- check the browser console.</p>';
+      return;
+    }
+
+    try {
+      const plaintext = await window.AisappMigration.redeemLink(id, key);
+      panel.innerHTML = '';
+      const label = document.createElement('p');
+      label.style.cssText = 'margin:0 0 10px;font-weight:600;color:var(--aisapp-text)';
+      label.textContent = 'Received:';
+      const box = document.createElement('textarea');
+      box.className = 'aisapp-input aisapp-textarea';
+      box.readOnly = true;
+      box.rows = 4;
+      box.value = plaintext;
+      box.style.textAlign = 'left';
+      panel.appendChild(label);
+      panel.appendChild(box);
+      const hint = document.createElement('p');
+      hint.style.cssText = 'margin:10px 0 0;font-size:0.8rem;color:var(--aisapp-text-dim)';
+      hint.textContent = 'This link has now been used and won\u2019t work again.';
+      panel.appendChild(hint);
+    } catch (err) {
+      panel.innerHTML = `<p style="margin:0;color:var(--aisapp-danger)">${err.message}</p>`;
+    }
+  }
+
   // -------------------------------------------------------------
   // Wiring
   // -------------------------------------------------------------
@@ -275,3 +379,4 @@
   document.addEventListener('DOMContentLoaded', render);
   if (document.readyState !== 'loading') render();
 })();
+
