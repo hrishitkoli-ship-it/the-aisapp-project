@@ -198,3 +198,72 @@
   font-family: var(--aisapp-font-body);
   font-size: 0.85rem;
 }
+
+/* ---- Skeleton loading states (item 5) ----
+ * Lightweight CSS shimmer, no dependency. Matches the final layout's
+ * real row height/padding (.aisapp-tree-row: 8px 10px padding, see
+ * that rule above) rather than a generic spinner, so there's no
+ * visible layout shift once real content replaces it.
+ */
+
+@keyframes aisapp-shimmer {
+  0% { background-position: -200px 0; }
+  100% { background-position: calc(200px + 100%) 0; }
+}
+
+.aisapp-skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+}
+
+.aisapp-skeleton-bar {
+  height: 14px;
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    var(--aisapp-surface-raised) 25%,
+    var(--aisapp-border) 37%,
+    var(--aisapp-surface-raised) 63%
+  );
+  background-size: 400px 100%;
+  animation: aisapp-shimmer 1.4s ease-in-out infinite;
+}
+
+.aisapp-skeleton-icon {
+  width: 15px;
+  height: 15px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  background: linear-gradient(
+    90deg,
+    var(--aisapp-surface-raised) 25%,
+    var(--aisapp-border) 37%,
+    var(--aisapp-surface-raised) 63%
+  );
+  background-size: 400px 100%;
+  animation: aisapp-shimmer 1.4s ease-in-out infinite;
+}
+
+.aisapp-skeleton-editor-line {
+  height: 14px;
+  margin: 6px 0;
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    var(--aisapp-surface-raised) 25%,
+    var(--aisapp-border) 37%,
+    var(--aisapp-surface-raised) 63%
+  );
+  background-size: 400px 100%;
+  animation: aisapp-shimmer 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aisapp-skeleton-bar,
+  .aisapp-skeleton-icon,
+  .aisapp-skeleton-editor-line {
+    animation: none;
+  }
+}

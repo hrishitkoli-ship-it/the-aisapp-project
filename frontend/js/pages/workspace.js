@@ -532,10 +532,48 @@
     }
   }
 
+  // -------------------------------------------------------------
+  // Skeleton loading states (item 5 of the human's fix/feature prompt
+  // -- replace "Loading..." text with shimmer rows matching final
+  // layout). Pure CSS animation (see workspace.css's
+  // .aisapp-skeleton-* rules), no dependency, per the prompt's own
+  // "lightweight... no heavy dependency needed" instruction.
+  //
+  // Row COUNT and WIDTHS are deliberately varied (5 rows, a handful of
+  // different bar widths cycled through) rather than 5 identical bars
+  // -- identical-width rows read as an obviously fake placeholder
+  // grid; varied widths read as "approximating real file names of
+  // different lengths," which is closer to what's about to actually
+  // render and avoids an obvious flash when real content swaps in.
+  // -------------------------------------------------------------
+
+  function renderTreeSkeleton() {
+    const container = h('div', { class: 'aisapp-tree-level' });
+    const widths = ['70%', '45%', '85%', '55%', '60%'];
+    for (let i = 0; i < widths.length; i++) {
+      container.appendChild(
+        h('div', { class: 'aisapp-skeleton-row' }, [
+          h('div', { class: 'aisapp-skeleton-icon' }),
+          h('div', { class: 'aisapp-skeleton-bar', style: `width:${widths[i]}` }),
+        ])
+      );
+    }
+    return container;
+  }
+
+  function renderEditorSkeleton() {
+    const wrap = h('div', {});
+    const widths = ['92%', '78%', '85%', '40%', '95%', '60%', '88%', '30%'];
+    for (const w of widths) {
+      wrap.appendChild(h('div', { class: 'aisapp-skeleton-editor-line', style: `width:${w}` }));
+    }
+    return wrap;
+  }
+
   function renderTreePanel() {
     const panel = h('div', { class: 'aisapp-panel aisapp-ws-tree-panel' });
     if (state.loadingTree) {
-      panel.appendChild(h('p', { class: 'aisapp-empty-state' }, 'Loading files…'));
+      panel.appendChild(renderTreeSkeleton());
     } else if (state.tree.length === 0) {
       panel.appendChild(
         h('p', { class: 'aisapp-empty-state' }, 'No files yet. Create one above, or have an AI session push one.')
@@ -560,7 +598,7 @@
     wrap.appendChild(header);
 
     if (state.loadingFile) {
-      wrap.appendChild(h('p', { class: 'aisapp-empty-state' }, 'Loading…'));
+      wrap.appendChild(renderEditorSkeleton());
       return wrap;
     }
 
