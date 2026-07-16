@@ -307,6 +307,49 @@ work:
 entry. Ship order for the rest, as specified: **1-5 -> 7-12 -> 14-16 ->
 13** (13 is explicitly optional and last).
 
+**⚠️ LIVE COLLISION, found by Session 4 immediately after this division
+landed: items #2, #4, and #5 below are reassigned to Session 1 here,
+but Session 4 had already independently claimed and completed all
+three** (see the original, now-superseded division this replaced, and
+Session 4's own ledger entries for #2/#4/#5 — each shipped as its own
+commit: `747bba4`, `dd714ee`, `7e98754`, in that order). Not caught
+before landing because these were built and pushed across the same
+window this restructure itself landed in — a genuine timing race, not
+anyone doing anything wrong.
+
+**Facts, stated plainly rather than unilaterally resolved by whichever
+session reads this first:**
+- #2 (File/Folder toggle): done in `frontend/js/pages/workspace.js` +
+  `frontend/css/workspace.css`. Folder mode creates a starter file
+  inside a trailing-slash path (this backend has no real empty-
+  directory concept — confirmed by reading `fileOps.js`'s own header).
+  Nested creation in one action required zero backend changes — already
+  worked via the existing single-file PUT path once `buildFileTree()`
+  was traced directly.
+- #4 (re-render audit): done, same two files. Found `toggleDir()`
+  (expand/collapse one folder) was calling the FULL `renderShell()` —
+  tearing down and rebuilding the entire toolbar + tree on every single
+  folder click. Fixed with a narrowly-scoped `rerenderTreePanelOnly()`
+  that swaps only the tree panel's DOM node.
+- #5 (skeleton loading): done, same two files. Replaced both genuine
+  "Loading..." occurrences in `workspace.js` (tree panel, editor) with
+  CSS shimmer rows matching real layout dimensions. One remaining
+  "Loading..." exists in `router.js` (a single-word header label,
+  resolves near-instantly) — deliberately left as plain text, flagged
+  as out of scope rather than silently expanded into or silently
+  missed; see Session 4's #5 commit message for the full reasoning.
+
+**If you're Session 1 reading this: please check the three commits
+above before doing any of your own work on #2/#4/#5** — redoing them
+risks silently overwriting already-verified, already-shipped fixes
+(exactly the pattern that's hit `routes/projects.js` multiple times
+already this session — see Known Failure Signatures #7/#9). If you
+have a strong reason these should be redone differently (a different
+architectural approach, something Session 4's version got wrong), say
+so here in the ledger rather than silently reverting — that's a real
+conversation worth having explicitly, not something to resolve by
+whoever commits last winning.
+
 ### Session 1 (shell / router / workspace / design system)
 - **#2** -- New File dialog: add a File/Folder toggle (or support a
   trailing "/" to create a folder), including nested folder creation
@@ -785,6 +828,94 @@ and correctly extended to two route files (`files.js`, `projects.js`)
 whose own local catch blocks bypassed `app.js`'s handler entirely —
 good confirmation the pattern is being recognized and maintained
 consistently now, not just fixed once and forgotten.
+
+**Follow-up (same session, human-provided 16-item fix/feature prompt,
+framed against Next.js — this app is confirmed Express + vanilla JS
+throughout, no React tree anywhere): claimed and shipped items 1–5
+(Priority 1) as this lane's own subset.** Commits: `eac2345` (#1),
+`747bba4` (#2), `aa17acd`→amended to `008bd04` (#3, see below), `dd714ee`
+(#4), `7e98754` (#5).
+
+- **#1 (rebrand aihub→aisapp):** visible surfaces only (title, PWA
+  manifest name/short_name, in-app header, doc titles) — deliberately
+  NOT the ~547 `aihub-*` CSS class occurrences (cosmetic-internal, zero
+  user-visible difference) and NOT the token-prefix format or the
+  `localStorage` device-secret key (both load-bearing; renaming either
+  breaks existing tokens/saved secrets — this is a wire-format/storage-
+  key change, not branding). A later session (`b2171b6`) did the full
+  repo-wide rename including those two categories — see that ledger
+  entry for how it handled the backward-compatibility concerns this
+  entry flagged as needing care if attempted.
+- **#2 (File/Folder toggle):** real modal replacing a bare
+  `window.prompt()`. This backend has no empty-directory concept at
+  all (confirmed via `fileOps.js`'s own header) — Folder mode creates a
+  starter file inside a trailing-slash path, matching the fix request's
+  own suggested fallback. Nested creation in one action needed zero
+  backend changes — `buildFileTree()` already splits every path segment
+  correctly, verified by replicating its logic against real generated
+  paths, not just reading it.
+- **#3 ("project load is slow"):** traced the actual frontend fetch
+  pattern first (router.js/workspace.js/instructions.js/activity.js) —
+  found no redundant-refetch or N+1-shaped pattern in the REST layer;
+  that framing doesn't map onto this architecture. The real, confirmed
+  inefficiency was server-side: `buildFileTree()` fetched every file's
+  FULL content just to compute a size number via `Buffer.byteLength()`.
+  Fixed via `octet_length(content)` (server-side byte count, no
+  transfer) — verified this wasn't a silent correctness regression by
+  testing directly against a local libSQL-compatible engine first
+  (SQLite's plain `length()` returns character count, not bytes, for a
+  `TEXT` column — confirmed `length('café')=4` vs `octet_length('café')=5`
+  — using the wrong one would have silently produced wrong sizes for any
+  non-ASCII content). Commit message initially got mangled by the exact
+  backtick-in-`git commit -m` bug this file already documented
+  elsewhere — hit it directly, fixed via `--amend` + a message file
+  rather than leaving corrupted history.
+- **#4 ("UI is laggy," originally framed as React re-render
+  thrashing):** no VDOM here to profile. Found the real bug by reading
+  `renderShell()` directly: `toggleDir()` (expand/collapse ONE folder)
+  called the FULL page rebuild every time — tree + toolbar torn down
+  and rebuilt on every single folder click, scaling badly with project
+  size. Fixed with a narrowly-scoped `rerenderTreePanelOnly()` swapping
+  only the tree panel's DOM node. Re-verified the diagnosis was still
+  accurate against the current file before writing the fix, not
+  assumed carried-over — `workspace.js` changed by net -220 lines in a
+  same-day rebrand pass that landed mid-work on this exact item.
+- **#5 (skeleton screens):** pure CSS shimmer (no dependency, per the
+  request's own instruction), varied bar widths rather than identical
+  bars (reads as approximating real content, not an obviously-fake
+  placeholder grid), dimensions matched to the real `.aisapp-tree-row`
+  CSS rather than guessed. Included a `prefers-reduced-motion`
+  fallback, not explicitly asked for but cheap and worth doing for any
+  animated UI. One remaining "Loading..." in `router.js` (header
+  project-name label) deliberately left as plain text and flagged
+  rather than silently expanded into or silently missed — a full
+  skeleton for a two-word label felt disproportionate, and `router.js`
+  is shared/core-routing territory outside this item's actual scope.
+
+**Real collision found and flagged, not silently resolved either
+way:** after pushing all five, a separately-landed restructure of the
+Lane Assignments section (`7d9f0dc`) reassigned items #2/#4/#5 to
+Session 1 — a genuine timing race (both landed in the same general
+window), not anyone's mistake. Flagged this explicitly in that section
+with the facts and commit references, rather than either unilaterally
+deciding Session 1 should discard its own plans or silently letting a
+future Session 1 redo (and risk silently overwriting) already-shipped,
+already-verified work. See the Lane Assignments section itself for the
+full flag.
+
+**Also found and corrected, same follow-up:** the `7d9f0dc` restructure
+of this file's top-of-file "Current state" summary and file-tree status
+table preserved historical findings accurately (verified this directly,
+not assumed) but left several storage-related items marked broken/open
+that are actually resolved — Known Failure Signature #4 specifically,
+confirmed resolved via direct, human-witnessed live production
+verification (the real schema applied to the real live Turso database
+via its own SQL console; the human's own screenshots show the live app
+going from a hard `500` to working correctly, including successfully
+triggering the real device-secret flow against production). Corrected
+in commit `766f305` — added a clear correction note rather than
+silently rewriting the original claim, per this file's own established
+convention of preserving what was actually claimed at the time.
 
 ### Session 2 — Session Roster + Instructions pages
 **Status: shipped.** `frontend/js/roster.js`, `frontend/js/instructions.js`,
