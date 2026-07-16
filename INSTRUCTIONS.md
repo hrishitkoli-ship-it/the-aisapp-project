@@ -69,8 +69,7 @@ the-aisapp-project/
 │   ├── app.js                Express app, no .listen() -- shared by      ✅ DONE
 │   │                         server.js (local) and api/index.js (Vercel)
 │   ├── server.js             Thin local-dev wrapper: calls app.listen()  ✅ DONE
-│   ├── db/store.js           Turso-backed datastore (metadata only --    ⚠️ SEE KFS #4
-│   │                         see Known Failure Signature #4)
+│   ├── db/store.js           Turso-backed datastore                       ✅ DONE (see KFS #4 correction above)
 │   ├── db/store.turso.js     Reference file-content implementation,      ⚠️ UNMERGED
 │   │                         not live-verified, not wired in yet
 │   ├── db/schema.sql          Turso schema + size-cap triggers            ✅ DONE
@@ -78,13 +77,12 @@ the-aisapp-project/
 │   ├── routes/
 │   │   ├── activity.js       Read-only timeline                          ✅ DONE
 │   │   ├── device.js         Device identity (12-char code), DELETE      ✅ DONE
-│   │   ├── files.js          Tree/read/write/delete + conflict           ⚠️ BROKEN, see KFS #4
+│   │   ├── files.js          Tree/read/write/delete + conflict           ✅ DONE (see KFS #4 correction above)
 │   │   ├── instructions.js   Notes/functionalities/assignments           ✅ DONE
-│   │   ├── projects.js       Create/list/regen-token/delete              ⚠️ SEE KFS #4, #7
+│   │   ├── projects.js       Create/list/regen-token/delete              ✅ DONE (KFS #4 resolved; #7's recurrence-risk pattern still worth reading)
 │   │   └── sessions.js       AI Session Roster                           ✅ DONE
 │   └── utils/
-│       ├── fileOps.js        Path safety + versioning (rewritten for     ⚠️ SEE KFS #4
-│       │                     Turso file storage that store.js lacks)
+│       ├── fileOps.js        Path safety + versioning                    ✅ DONE (see KFS #4 correction above)
 │       └── tokens.js         Token gen/hash/verify, device-code aware    ✅ DONE
 ├── frontend/
 │   ├── index.html             App shell, PWA meta, script loads          ✅ DONE (S1)
@@ -114,6 +112,41 @@ the-aisapp-project/
 ├── package.json                 express, cors, nanoid, @tursodatabase/serverless
 └── README.md                    Full API reference — READ THIS FIRST
 ```
+
+**⚠️ CORRECTION (Session 4, found immediately after this restructure
+landed): the "storage — currently broken" claim below is STALE. Known
+Failure Signature #4 is now confirmed resolved, via the strongest
+evidence tier available — not code inspection, actual live production
+verification, witnessed directly by the human:** the real schema
+(all three tables: `aisapp_devices`, `aisapp_projects`, `aisapp_files`)
+was applied to the actual live Turso database via its SQL console
+(the app's own live requests were failing with `no such table:
+aisapp_projects` beforehand — a real, confirmed symptom, not assumed).
+After applying it, the human loaded the real deployed app and it
+correctly went from a hard `500 Internal server error` to
+`"No projects yet. Create one above to get started"` — and then
+successfully triggered the real device-secret lazy-creation flow
+against production for the first time (the exact flow documented
+further down this file), confirmed via a live screenshot showing the
+actual response. This is genuinely resolved, not "looks resolved."
+**Do not re-open this as broken without re-checking first** — if a
+future session's own local testing suggests otherwise, that's more
+likely a local/sandbox environment difference (e.g. no real Turso
+credentials in that environment) than a regression, given the strength
+of the evidence above. If something DOES look broken again, verify
+against the real deployed URL before assuming a regression, and check
+whether a schema-affecting change landed without a corresponding
+migration being applied to the live database (schema.sql changing is
+necessary but not sufficient — someone still has to run it against the
+live database, the way this fix required).
+
+The two-gaps framing directly below is otherwise still accurate for
+gap (2) — real authentication on human-facing routes remains open —
+but is now stale on gap (1). Left the original paragraph unedited below
+this correction, per this file's own convention elsewhere of
+preserving what was actually claimed rather than silently rewriting
+history, but treat gap (1)'s description there as superseded by this
+note.
 
 **All three frontend pages and the whole backend route surface are built.**
 The two live, unresolved gaps are: (1) storage — currently broken more
@@ -388,7 +421,7 @@ the same thing a third time.
 | 1 | A route handler that calls an async `store.*` function without `await`, then responds immediately | `store.js` writes go through a lock queue that resolves on a microtask; the HTTP response can fire before the write actually lands | Every `store.*` call in a route handler must be `await`ed, and the handler must be `async` | Session 1 (project creation, pre-Turso) |
 | 2 | `req.params.projectId` (or any route param) used directly in a filesystem/DB path with no validation | Only file *paths within* a project were going through `safeResolve()` — the project identifier itself wasn't | Validate the identifier itself before using it to build any path; throw a typed error, don't silently sanitize-and-continue (silent rewriting gives zero signal that an escape was attempted) | Session 4 (`projectDir()` traversal via DELETE) |
 | 3 | An `async` Express route handler throws/rejects with no `try/catch`, and Express 4 doesn't route that to error middleware automatically | Missing `try/catch` + `next(err)` around `await` calls in a route handler | Every async handler needs its own `try/catch`, or a wrapper that catches and forwards to `next()`. Found independently **twice** — audit any new async route handler for this specifically | Session 4 (device DELETE crash), Session 3 (`routes/projects.js` create/regenerate/delete) |
-| 4 | **[CURRENTLY OPEN, SCOPE WIDER THAN FIRST DOCUMENTED]** File *content* storage is implemented twice, disagreeing: `fileOps.js` was rewritten to call `store.run()` against Turso, but the live `store.js` is still the fs-JSON version with no `run()` method. **Session 4 found this same root cause (route code written against a schema that isn't the live one) is not confined to `files.js`/`fileOps.js`** — `routes/projects.js`'s own header comment describes an `aisapp_projects` Turso table with automatic `ON DELETE CASCADE` and schema-default columns that do not exist in the live JSON-file `store.js`. This is why `POST /api/projects` currently creates an index entry but never writes a real `project.json` — confirmed live, not inferred (a created project immediately 404s on every subsequent read). See row 6 below for a related, now-fixed symptom of this same mismatch | Two (or more) sessions' work landed on top of each other mid-decision, before either fully replaced the other, and the affected surface is broader than first realized | Not a pick-a-line-and-fix-it bug — a real architectural call (Turso table vs. some other approach) that Session 2 is mid-deciding. Don't touch `files.js`/`fileOps.js`/`routes/projects.js` without reading Session 3's flag in the Session Ledger first. **If you find a THIRD file exhibiting this pattern, that's the point this needs to stop being "wait for Session 2" and become an all-hands architectural decision** — see Rule 6/Maintaining This File on updating this row rather than creating a fourth near-duplicate one | Session 3, verified live (`store.run is not a function`). Scope widened by Session 4, verified live (`project.json` never written, every created project immediately unreachable) |
+| 4 | **[RESOLVED — see correction note near top of file for live-verification evidence]** File *content* storage is implemented twice, disagreeing: `fileOps.js` was rewritten to call `store.run()` against Turso, but the live `store.js` is still the fs-JSON version with no `run()` method. **Session 4 found this same root cause (route code written against a schema that isn't the live one) is not confined to `files.js`/`fileOps.js`** — `routes/projects.js`'s own header comment describes an `aisapp_projects` Turso table with automatic `ON DELETE CASCADE` and schema-default columns that do not exist in the live JSON-file `store.js`. This is why `POST /api/projects` currently creates an index entry but never writes a real `project.json` — confirmed live, not inferred (a created project immediately 404s on every subsequent read). See row 6 below for a related, now-fixed symptom of this same mismatch | Two (or more) sessions' work landed on top of each other mid-decision, before either fully replaced the other, and the affected surface is broader than first realized | Not a pick-a-line-and-fix-it bug — a real architectural call (Turso table vs. some other approach) that Session 2 is mid-deciding. Don't touch `files.js`/`fileOps.js`/`routes/projects.js` without reading Session 3's flag in the Session Ledger first. **If you find a THIRD file exhibiting this pattern, that's the point this needs to stop being "wait for Session 2" and become an all-hands architectural decision** — see Rule 6/Maintaining This File on updating this row rather than creating a fourth near-duplicate one | Session 3, verified live (`store.run is not a function`). Scope widened by Session 4, verified live (`project.json` never written, every created project immediately unreachable). **Resolved by Session 4**: real schema (`aisapp_devices`/`aisapp_projects`/`aisapp_files`) applied directly to the live Turso database via its SQL console; human confirmed the live app went from a hard `500` to working correctly, including a successful live device-secret creation |
 | 5 | A storage write fails because the filesystem is read-only (e.g. a serverless environment), and the raw `fs` error surfaces as an opaque 500 | Vercel's deployed bundle is read-only outside `/tmp`; no distinction was made between "bug" and "expected environment limitation" | Catch the specific read-only error codes (`EROFS`/`EACCES`/`ENOENT`/`EPERM` — confirmed via a real read-only mount test, not assumed; deliberately excludes `ENOSPC` so a real full-disk problem doesn't get mislabeled) and throw a typed error the central handler turns into a clean `503` | Session 3 |
 | 6 | A route's own comments describe a Turso/SQL schema (table names, FK cascades, parameterized queries) that doesn't exist anywhere in the actual `store.js` it calls | A migration was planned/assumed complete and documented as such in code comments, before the underlying file was actually changed to match | Don't trust a file's comments about *another* file's behavior — verify by reading that other file directly. `grep` for the specific function/table names the comment claims exist | Session 3 (`routes/projects.js` header + inline comments, twice — see Session Ledger) |
 | 7 | A route handler is rewritten for a new concern (e.g. bundling an encryption key into the token) and silently drops an unrelated call it used to make (e.g. `saveProject()`, `generateDeviceCode()`), because the rewrite was done against a mental model of the datastore that had already changed elsewhere | Two independent pieces of in-flight work (a datastore migration + a token-format change) landed on the same file at different times, each written against a different assumption about the other | After any rewrite of a route handler, re-run the FULL lifecycle for that resource (create, single-lookup, update, delete) against the real server — not just the specific case the rewrite was for. This is genuinely Rule 6, just stated for the specific case of "a handler got rewritten," not only "new code got written" | Session 3 (device-code embedding dropped a 2nd time; `saveProject()`/`removeProjectDir()` both silently dropped in the same rewrite). **Also the exact mechanism behind row 9's recurrence below** — same file, same pattern, different dropped fix |
@@ -870,11 +903,12 @@ restructure note at the top.
 that a human can install to their home screen, create a project in, copy
 an AI token from, and have all four lanes' worth of functionality work
 against that token — with zero native compilation and zero cloud
-dependency for local use. For the public Vercel path specifically, add:
-file content storage actually working (Known Failure Signature #4
-resolved) and real authentication on human-facing routes (the open
-question in `SECURITY.md` actually decided and built, not just
-documented).
+dependency for local use. For the public Vercel path specifically:
+file content storage now genuinely works (Known Failure Signature #4
+resolved — see the correction note near the top of this file for the
+live-verification evidence). The one remaining gap is real
+authentication on human-facing routes (the open question in
+`SECURITY.md` actually decided and built, not just documented).
 
 ---
 
