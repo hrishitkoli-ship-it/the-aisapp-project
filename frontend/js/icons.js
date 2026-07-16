@@ -59,6 +59,8 @@
       '<rect x="5" y="2.5" width="14" height="19" rx="1.5"/><path d="M9 18.5h6"/><path d="M12 7v6.5M9.2 10.7 12 13.5l2.8-2.8"/>',
     check: '<path d="M5 12.5l4.5 4.5L19 7"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
+    settings:
+      '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="7" cy="17" r="2"/>',
   };
 
   function svg(name, opts = {}) {
@@ -83,3 +85,4 @@
 
   window.AisappIcons = { svg, el, names: Object.keys(PATHS) };
 })();
+
