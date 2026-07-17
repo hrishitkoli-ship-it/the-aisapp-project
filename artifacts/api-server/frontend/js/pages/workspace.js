@@ -194,6 +194,7 @@
       loadingTree: false,
       loadingFile: false,
       wrapEnabled: false,
+      autoSaveTimer: null,
     };
   }
 
