@@ -1135,6 +1135,41 @@ Code-reviewed only (`node --check` clean, brace-balance checked); live
 verification blocked by the same no-`aisapp.vercel.app`-egress
 constraint as every other entry in this lane.
 
+**Follow-up (same session): upgraded from code-review-only to a real
+mocked-fetch jsdom run** — same technique an earlier pass in this lane
+used to verify the device-secret retry flow (see that entry above),
+applied here to cover #11, #15, and this entry's own #16 fix together
+in one harness (not committed to the repo — dev-only, `npm install
+jsdom --no-save` in an isolated scratch dir, same "never a runtime
+dependency" convention Session 4 used for `@tursodatabase/database`).
+Loads the real `icons.js` + `projects.js` into a jsdom window, mocks
+`fetch` to match `routes/projects.js`'s actual documented contract
+(200 list, 201 create, 403 `requiresTosAcceptance` before "accepting"
+ToS in the mock, 201 after), drives real DOM events (`input`,
+`submit`, `click`, `Escape` keydown) — 19/19 checks passed:
+- Search filters by name and by description independently; empty
+  search restores the full list; no-match empty state text includes
+  the actual typed term.
+- FAB opens exactly one overlay; a second click while open does not
+  stack a second one (guard confirmed, not just read as present);
+  Escape closes the unfilled create modal.
+- The 403 path renders the Settings link with the correct `#/settings`
+  href, alongside the backend's own message text (not replacing it);
+  clicking the link closes the modal.
+- Once "accepted," the same form submission succeeds: modal closes,
+  token-reveal modal shows the exact token from the mocked response,
+  and exactly 2 create attempts were made total (1 rejected + 1
+  succeeded) — confirming the rejected attempt didn't silently double-
+  submit or leave the form in a bad state for the retry.
+
+Still not a live request against the real deployed server/database —
+that gap is explicitly named, not papered over — but this is a real
+step up from "read the code and it looked right," and specifically
+exercises the DOM wiring code review can't (event listeners actually
+firing, modal stacking guards actually guarding, the two modals
+actually sequencing correctly rather than just reading like they
+would).
+
 ### Session 2 — Session Roster + Instructions pages
 **Status: shipped.** `frontend/js/roster.js`, `frontend/js/instructions.js`,
 `frontend/js/activity.js` (shared component), `frontend/css/instructions-roster.css`.
