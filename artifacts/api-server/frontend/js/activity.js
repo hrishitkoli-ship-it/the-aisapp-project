@@ -113,7 +113,7 @@
           ]),
           h('div', { class: 'aisapp-activity-meta' }, [
             entry.actor ? h('span', {}, entry.actor) : null,
-            entry.timestamp ? h('span', {}, timeAgo(entry.timestamp)) : null,
+            entry.timestamp ? h('span', { 'data-ts': entry.timestamp }, timeAgo(entry.timestamp)) : null,
           ]),
         ]),
       ]);
@@ -129,7 +129,7 @@
         h('div', { class: 'aisapp-activity-message' }, entry.message || meta.label),
         h('div', { class: 'aisapp-activity-meta' }, [
           entry.actor ? h('span', {}, entry.actor) : null,
-          entry.timestamp ? h('span', {}, timeAgo(entry.timestamp)) : null,
+          entry.timestamp ? h('span', { 'data-ts': entry.timestamp }, timeAgo(entry.timestamp)) : null,
         ]),
       ]),
     ]);
@@ -295,9 +295,19 @@
     }
     document.addEventListener('visibilitychange', onVisibilityChange);
 
+    // Tick every 30 s so "X min ago" timestamps stay current without
+    // re-fetching. Mirrors the roster's ticker pattern.
+    const tsTicker = setInterval(() => {
+      if (destroyed) { clearInterval(tsTicker); return; }
+      listEl.querySelectorAll('[data-ts]').forEach((el) => {
+        el.textContent = timeAgo(el.getAttribute('data-ts'));
+      });
+    }, 30000);
+
     function destroy() {
       destroyed = true;
       if (timerId) clearTimeout(timerId);
+      clearInterval(tsTicker);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     }
 

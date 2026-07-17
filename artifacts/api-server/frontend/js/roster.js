@@ -241,15 +241,8 @@
 
           clear(listEl);
 
-          const staleCount = sorted.filter(isStale).length;
-          if (countEl) {
-            countEl.textContent =
-              sessions.length === 0
-                ? ''
-                : `${sessions.length} session${sessions.length === 1 ? '' : 's'}${staleCount > 0 ? ` · ${staleCount} stale` : ''}`;
-          }
-
           if (!sessions || sessions.length === 0) {
+            if (countEl) countEl.textContent = '';
             listEl.appendChild(
               h(
                 'p',
@@ -269,6 +262,39 @@
             if (aStale !== bStale) return aStale - bStale;
             return new Date(b.lastSeenAt || 0) - new Date(a.lastSeenAt || 0);
           });
+
+          const staleCount = sorted.filter(isStale).length;
+          if (countEl) {
+            countEl.textContent = `${sessions.length} session${sessions.length === 1 ? '' : 's'}${staleCount > 0 ? ` \u00B7 ${staleCount} stale` : ''}`;
+          }
+
+          // "Clear stale" batch-dismiss button -- shown in the header
+          // only when stale sessions exist; wired to the current sorted
+          // list so it always reflects what's on screen.
+          let dismissAllBtn = headerRow.querySelector('.aisapp-dismiss-all-btn');
+          if (staleCount > 0) {
+            if (!dismissAllBtn) {
+              dismissAllBtn = h('button', {
+                class: 'aisapp-btn aisapp-btn--subtle aisapp-dismiss-all-btn',
+                onclick: async () => {
+                  await Promise.all(
+                    sorted.filter(isStale).map((s) =>
+                      fetch(
+                        `/api/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(s.id)}`,
+                        { method: 'DELETE' }
+                      )
+                    )
+                  );
+                  refresh();
+                },
+              }, `Clear stale (${staleCount})`);
+              headerRow.appendChild(dismissAllBtn);
+            } else {
+              dismissAllBtn.textContent = `Clear stale (${staleCount})`;
+            }
+          } else if (dismissAllBtn) {
+            headerRow.removeChild(dismissAllBtn);
+          }
 
           for (const session of sorted) {
             listEl.appendChild(renderSessionCard(session, {
@@ -326,9 +352,22 @@
       }
       document.addEventListener('visibilitychange', onVisibilityChange);
 
+      // Tick every 30 s so "X min ago" text stays current without
+      // re-fetching. data-ts and data-ts-prefix are on the span elements
+      // rendered by renderSessionCard.
+      const tsTicker = setInterval(() => {
+        if (destroyed) { clearInterval(tsTicker); return; }
+        listEl.querySelectorAll('[data-ts]').forEach((el) => {
+          const ts = el.getAttribute('data-ts');
+          const prefix = el.getAttribute('data-ts-prefix');
+          el.textContent = prefix ? `${prefix} ${timeAgo(ts)}` : timeAgo(ts);
+        });
+      }, 30000);
+
       function destroy() {
         destroyed = true;
         if (timerId) clearTimeout(timerId);
+        clearInterval(tsTicker);
         document.removeEventListener('visibilitychange', onVisibilityChange);
       }
 

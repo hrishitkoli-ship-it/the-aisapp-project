@@ -650,6 +650,17 @@
       gutter.scrollTop = textarea.scrollTop;
     });
 
+    // Tab → 2 spaces. Dispatches 'input' so oninput handles gutter /
+    // saveBtn / dirtyBadge / auto-save without duplicating logic here.
+    textarea.addEventListener('keydown', (e) => {
+      if (e.key !== 'Tab') return;
+      e.preventDefault();
+      const { selectionStart: s, selectionEnd: end } = e.target;
+      e.target.value = e.target.value.slice(0, s) + '  ' + e.target.value.slice(end);
+      e.target.selectionStart = e.target.selectionEnd = s + 2;
+      e.target.dispatchEvent(new Event('input'));
+    });
+
     // Word wrap toggle -- created after textarea so the click handler
     // can reference textarea directly without forward-ref machinery.
     const wrapToggle = h(
@@ -671,22 +682,51 @@
     const editorBody = h('div', { class: 'aisapp-ws-editor-body' }, [gutter, textarea]);
     wrap.appendChild(editorBody);
 
+    const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+
+    // Ln / Col indicator -- updates on every cursor movement.
+    const statusBar = h('span', { class: 'aisapp-ws-status-bar' }, 'Ln 1, Col 1');
+    function updateStatusBar() {
+      const before = textarea.value.slice(0, textarea.selectionStart);
+      const lines = before.split('\n');
+      statusBar.textContent = `Ln ${lines.length}, Col ${lines[lines.length - 1].length + 1}`;
+    }
+    textarea.addEventListener('click', updateStatusBar);
+    textarea.addEventListener('keyup', updateStatusBar);
+
+    // Copy file path button -- appended to the header now that isMac is
+    // in scope and we have the textarea ref for focus safety.
+    const copyPathBtn = h('button', {
+      class: 'aisapp-btn aisapp-icon-btn',
+      title: 'Copy file path',
+      onclick: () => {
+        navigator.clipboard.writeText(state.selectedPath).then(() => {
+          copyPathBtn.setAttribute('title', 'Copied!');
+          setTimeout(() => copyPathBtn.setAttribute('title', 'Copy file path'), 1500);
+        });
+      },
+    }, window.AisappIcons.el('clipboard', { size: 14 }));
+    header.appendChild(copyPathBtn);
+
+    const saveBtnLabel = h('span', {}, 'Save');
     const saveBtn = h(
       'button',
       {
         class: 'aisapp-btn aisapp-btn--primary',
+        title: `Save file (${isMac ? '⌘S' : 'Ctrl+S'})`,
         onclick: async () => {
           saveBtn.disabled = true;
-          saveBtn.textContent = 'Saving…';
+          saveBtnLabel.textContent = 'Saving\u2026';
+          clearTimeout(state.autoSaveTimer);
           try {
             await saveFile({ force: false });
           } finally {
-            saveBtn.textContent = 'Save';
+            saveBtnLabel.textContent = 'Save';
             saveBtn.disabled = !hasUnsavedChanges();
           }
         },
       },
-      'Save'
+      [saveBtnLabel, '\u00A0', h('kbd', { class: 'aisapp-kbd-hint' }, isMac ? '⌘S' : '⌃S')]
     );
     saveBtn.disabled = !hasUnsavedChanges();
 
@@ -702,6 +742,7 @@
         { class: 'aisapp-btn aisapp-btn--danger aisapp-icon-row', onclick: deleteCurrentFile },
         [window.AisappIcons.el('trash', { size: 16 }), 'Delete']
       ),
+      statusBar,
     ]);
     wrap.appendChild(actions);
 
@@ -723,6 +764,13 @@
     if ((e.metaKey || e.ctrlKey) && e.key === 's' && state.selectedPath && !state.loadingFile) {
       e.preventDefault();
       saveFile({ force: false });
+      return;
+    }
+    // Escape: go back to the file tree when the file is clean.
+    // If there are unsaved changes we leave Escape alone -- the user
+    // must save or explicitly discard before navigating away.
+    if (e.key === 'Escape' && state.selectedPath && !hasUnsavedChanges() && !state.loadingFile) {
+      closeFile();
     }
   }
 
