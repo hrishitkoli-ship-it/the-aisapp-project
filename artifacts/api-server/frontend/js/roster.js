@@ -149,14 +149,22 @@
   // Session card
   // -------------------------------------------------------------
 
-  function renderSessionCard(session) {
-    return h('div', { class: 'aisapp-roster-card' }, [
+  function renderSessionCard(session, { onDismiss } = {}) {
+    const stale = isStale(session);
+    return h('div', { class: `aisapp-roster-card${stale ? ' aisapp-roster-card--stale' : ''}` }, [
       h('div', { class: 'aisapp-roster-card-top' }, [
         h('span', { class: `aisapp-status-dot ${statusDotClass(session)}`, 'aria-hidden': 'true' }),
         h('div', { class: 'aisapp-roster-card-title' }, [
           h('span', { class: 'aisapp-roster-card-label' }, session.label || session.id),
           h('span', { class: 'aisapp-roster-card-status' }, statusLabel(session)),
         ]),
+        stale && onDismiss
+          ? h('button', {
+              class: 'aisapp-btn aisapp-btn--subtle aisapp-roster-dismiss-btn',
+              title: 'Remove this stale session from the roster',
+              onclick: () => onDismiss(session.id),
+            }, 'Dismiss')
+          : null,
       ]),
       session.function
         ? h('div', { class: 'aisapp-roster-card-row' }, [
@@ -227,11 +235,12 @@
 
           clear(listEl);
 
+          const staleCount = sorted.filter(isStale).length;
           if (countEl) {
             countEl.textContent =
               sessions.length === 0
                 ? ''
-                : `${sessions.length} session${sessions.length === 1 ? '' : 's'}`;
+                : `${sessions.length} session${sessions.length === 1 ? '' : 's'}${staleCount > 0 ? ` · ${staleCount} stale` : ''}`;
           }
 
           if (!sessions || sessions.length === 0) {
@@ -256,7 +265,19 @@
           });
 
           for (const session of sorted) {
-            listEl.appendChild(renderSessionCard(session));
+            listEl.appendChild(renderSessionCard(session, {
+              onDismiss: async (sessionId) => {
+                try {
+                  await fetch(
+                    `/api/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(sessionId)}`,
+                    { method: 'DELETE' }
+                  );
+                  await refresh();
+                } catch {
+                  // silent -- will recover on next poll
+                }
+              },
+            }));
           }
         } catch (err) {
           if (destroyed) return;

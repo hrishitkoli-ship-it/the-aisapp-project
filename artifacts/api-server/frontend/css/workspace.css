@@ -267,3 +267,31 @@
     animation: none;
   }
 }
+
+/* ---- Dirty / unsaved indicator in editor header ---- */
+
+.aisapp-ws-dirty-badge {
+  width: 8px;
+  height: 8px;
+  min-width: 8px;
+  border-radius: 50%;
+  background: var(--aisapp-pending);
+  align-self: center;
+  flex-shrink: 0;
+}
+
+/* ---- Word wrap mode for the editor textarea ---- */
+
+.aisapp-ws-textarea.is-wrap {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-all;
+}
+
+/* ---- Active state for toggle-style subtle buttons (e.g. wrap toggle) ---- */
+
+.aisapp-btn.is-active {
+  background: var(--aisapp-accent-dim);
+  color: var(--aisapp-accent);
+  border-color: var(--aisapp-accent-dim);
+}

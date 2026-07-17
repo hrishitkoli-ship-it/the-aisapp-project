@@ -55,6 +55,23 @@ humanRouter.get('/', async (req, res, next) => {
   }
 });
 
+// Human-facing: dismiss (remove) a stale session from the roster.
+// Intentionally human-only: an AI session removing another session
+// would bypass the "human stays in control" principle for roster state.
+humanRouter.delete('/:sessionId', async (req, res, next) => {
+  try {
+    const { projectId, sessionId } = req.params;
+    const sessions = await store.getSessions(projectId);
+    const idx = sessions.findIndex((s) => s.id === sessionId);
+    if (idx === -1) return res.status(404).json({ error: 'Session not found.' });
+    sessions.splice(idx, 1);
+    await store.saveSessions(projectId, sessions);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ---------------------------------------------------------------------
 // AI-facing: read + write
 // ---------------------------------------------------------------------

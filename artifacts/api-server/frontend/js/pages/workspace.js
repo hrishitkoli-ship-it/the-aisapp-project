@@ -193,6 +193,7 @@
       expectedVersion: null,
       loadingTree: false,
       loadingFile: false,
+      wrapEnabled: false,
     };
   }
 
@@ -587,6 +588,14 @@
   function renderEditor() {
     const wrap = h('div', { class: 'aisapp-ws-editor' });
 
+    // Dirty badge: shown when editorContent differs from savedContent.
+    // Initially hidden (file was just loaded); oninput toggles it.
+    const dirtyBadge = h('span', {
+      class: 'aisapp-ws-dirty-badge',
+      title: 'Unsaved changes',
+      style: 'display:none',
+    });
+
     const header = h('div', { class: 'aisapp-ws-editor-header' }, [
       h(
         'button',
@@ -594,6 +603,7 @@
         [window.AisappIcons.el('chevron-left', { size: 16 }), 'Files']
       ),
       h('span', { class: 'aisapp-ws-editor-path aisapp-mono' }, state.selectedPath),
+      dirtyBadge,
     ]);
     wrap.appendChild(header);
 
@@ -609,7 +619,7 @@
     }
 
     const textarea = h('textarea', {
-      class: 'aisapp-ws-textarea aisapp-mono',
+      class: `aisapp-ws-textarea aisapp-mono${state.wrapEnabled ? ' is-wrap' : ''}`,
       spellcheck: 'false',
       autocapitalize: 'off',
       autocorrect: 'off',
@@ -620,7 +630,9 @@
           clear(gutter);
           for (let i = 1; i <= newLineCount; i++) gutter.appendChild(h('div', {}, String(i)));
         }
-        saveBtn.disabled = !hasUnsavedChanges();
+        const dirty = hasUnsavedChanges();
+        saveBtn.disabled = !dirty;
+        dirtyBadge.style.display = dirty ? 'inline-block' : 'none';
       },
     });
     textarea.value = state.editorContent;
@@ -629,6 +641,24 @@
     textarea.addEventListener('scroll', () => {
       gutter.scrollTop = textarea.scrollTop;
     });
+
+    // Word wrap toggle -- created after textarea so the click handler
+    // can reference textarea directly without forward-ref machinery.
+    const wrapToggle = h(
+      'button',
+      {
+        class: `aisapp-btn aisapp-btn--subtle${state.wrapEnabled ? ' is-active' : ''}`,
+        title: 'Toggle word wrap (long lines)',
+        onclick: () => {
+          state.wrapEnabled = !state.wrapEnabled;
+          textarea.classList.toggle('is-wrap', state.wrapEnabled);
+          wrapToggle.classList.toggle('is-active', state.wrapEnabled);
+          wrapToggle.textContent = state.wrapEnabled ? 'No wrap' : 'Wrap';
+        },
+      },
+      state.wrapEnabled ? 'No wrap' : 'Wrap'
+    );
+    header.appendChild(wrapToggle);
 
     const editorBody = h('div', { class: 'aisapp-ws-editor-body' }, [gutter, textarea]);
     wrap.appendChild(editorBody);
@@ -674,9 +704,24 @@
   // Public entry point
   // -------------------------------------------------------------
 
+  // Ctrl/Cmd+S: save the open file from anywhere in the workspace.
+  // Self-cleaning: removes the listener once mountEl leaves the DOM,
+  // so no router lifecycle hook is needed.
+  function onGlobalSave(e) {
+    if (!state || !state.mountEl || !state.mountEl.isConnected) {
+      document.removeEventListener('keydown', onGlobalSave);
+      return;
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key === 's' && state.selectedPath && !state.loadingFile) {
+      e.preventDefault();
+      saveFile({ force: false });
+    }
+  }
+
   window.AisappWorkspace = {
     mount(mountEl, projectId) {
       state = freshState(projectId, mountEl);
+      document.addEventListener('keydown', onGlobalSave);
       renderShell();
       loadTree();
     },
