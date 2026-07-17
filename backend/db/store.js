@@ -364,6 +364,22 @@ async function hasAcceptedTos(deviceCode) {
   return !!result.rows[0]?.tos_accepted_at;
 }
 
+/** Same check as hasAcceptedTos, but for callers that haven't (and
+ *  can't yet) resolved a deviceCode -- specifically, project creation
+ *  itself, which is the ONE place a ToS gate needs to run before a
+ *  device row is guaranteed to exist by anything upstream of it, per
+ *  spec (#16: acceptance required before the first project can be
+ *  created, not just before the first file write). Reads the single/
+ *  first device row directly via getDevice(), matching that
+ *  function's own already-established single-device contract (see
+ *  its header comment) rather than introducing a second, different
+ *  device-resolution strategy. No device row at all -> false, same
+ *  fail-closed behavior as hasAcceptedTos(undefined). */
+async function hasDeviceAcceptedTos() {
+  const device = await getDevice();
+  return !!device?.tosAcceptedAt;
+}
+
 // ---------------------------------------------------------------------
 // Migration blobs (see schema.sql's aisapp_migration_blobs comment for
 // the full design). Fixed size ceiling enforced here in application
@@ -557,6 +573,7 @@ module.exports = {
   setDeviceSecretHash,
   acceptTos,
   hasAcceptedTos,
+  hasDeviceAcceptedTos,
   createMigrationBlob,
   consumeMigrationBlob,
   getProject,

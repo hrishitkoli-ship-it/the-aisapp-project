@@ -32,6 +32,7 @@ const express = require('express');
 const store = require('../db/store');
 const { humanSensitiveLimiter } = require('../middleware/rateLimit');
 const { requireDeviceSecret } = require('../middleware/auth');
+const { generateDeviceCode } = require('../utils/tokens');
 
 const router = express.Router();
 
@@ -49,10 +50,20 @@ router.get('/', async (req, res, next) => {
 });
 
 // POST /api/device/accept-tos - marks this device's Terms & Privacy as
-// accepted. Called from the Settings page. Idempotent. Requires a
-// device to already exist (a device is created lazily at first project
-// creation -- see routes/projects.js -- so on a genuinely fresh
-// install with zero projects, there's nothing to accept FOR yet).
+// accepted. Called from the Settings page. Idempotent.
+//
+// CORRECTED (Session 4, same pass that added the project-creation ToS
+// gate in routes/projects.js): this used to 404 on a device-less fresh
+// install ("create a project first") -- which was directly circular
+// once project creation itself started requiring acceptance first. A
+// person landing here BECAUSE creation blocked them couldn't actually
+// accept, since accepting required a device that (by definition, in
+// that exact path) didn't exist yet. Now lazily creates the device row
+// via the same getOrCreateDeviceCode(generateDeviceCode) pattern
+// routes/projects.js already uses, rather than requiring one to
+// pre-exist -- so accepting ToS works as a person's genuine first-ever
+// action on a brand new install, not just as a recovery step after
+// creation already failed once.
 //
 // Deliberately NOT behind requireDeviceSecret, unlike DELETE below --
 // different risk profile, not an oversight. requireDeviceSecret exists
@@ -63,16 +74,12 @@ router.get('/', async (req, res, next) => {
 // writes on that device were already reachable with no token before
 // this existed, same as today) -- there's nothing here worth gating
 // the same way as an irreversible delete or a token-invalidating
-// regenerate.
+// regenerate. That reasoning is unchanged by this fix -- only the
+// device-must-preexist requirement was wrong.
 router.post('/accept-tos', async (req, res, next) => {
   try {
-    const device = await store.getDevice();
-    if (!device) {
-      return res.status(404).json({
-        error: 'No device identity exists yet -- create a project first.',
-      });
-    }
-    await store.acceptTos(device.code);
+    const code = await store.getOrCreateDeviceCode(generateDeviceCode);
+    await store.acceptTos(code);
     res.json({ success: true, acceptedAt: new Date().toISOString() });
   } catch (err) {
     next(err);

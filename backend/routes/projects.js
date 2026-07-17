@@ -64,6 +64,25 @@ router.post('/', humanSensitiveLimiter, requireDeviceSecret, async (req, res, ne
       return res.status(400).json({ error: 'Project "name" is required.' });
     }
 
+    // TOS GATE (#16): acceptance required before the first project can
+    // be created -- not just before the first file write, which is all
+    // files.js's own pre-existing gate covered until now. Safe to check
+    // via store.hasDeviceAcceptedTos() (no deviceCode needed) rather
+    // than the chicken-and-egg problem hasAcceptedTos(deviceCode) would
+    // have here: requireDeviceSecret above already guarantees a device
+    // row exists by this point (it lazily creates one on first-ever
+    // write if missing -- see middleware/auth.js), so this is never
+    // checking against a device that doesn't exist yet, same guarantee
+    // files.js's caller-already-has-a-project gate relies on, just
+    // established one step earlier in this specific flow.
+    const tosAccepted = await store.hasDeviceAcceptedTos();
+    if (!tosAccepted) {
+      return res.status(403).json({
+        error: 'Accept the Terms & Privacy Policy on the Settings page before creating a project.',
+        requiresTosAcceptance: true,
+      });
+    }
+
     const id = nanoid(10);
     // This device's permanent identity code -- created once, on the
     // very first project ever created (on this shared server; see
