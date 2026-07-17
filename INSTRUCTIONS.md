@@ -410,11 +410,13 @@ whoever commits last winning.
   doesn't leak path info outside a project's own directory.
 
 ### Session 3 (this session -- project management UI + Session 5's retired scope)
-- **#11** -- Search bar on the projects/home page, filtering by name
-  and description. Lives directly in `projects.js`.
-- **#15** -- Remove the permanent "Create project" form from home;
-  replace with a blue circular FAB opening a modal/sheet for project
-  creation. Also lives directly in `projects.js`.
+- **#11** ✅ **SHIPPED** (`5a29249`) -- Search bar on the projects/home page,
+  filtering by name and description. Lives directly in `projects.js`.
+  Code-reviewed; live verification pending (real deployed URL needed).
+- **#15** ✅ **SHIPPED** (`5a29249`) -- Removed the permanent "Create project"
+  form from home; replaced with a blue circular FAB opening a modal/sheet.
+  Lives directly in `projects.js`.
+  Code-reviewed; live verification pending (real deployed URL needed).
 - **Standing**: verify each item above as it lands (live-server
   testing, not just code review -- see this session's own ledger
   entries for why that distinction has mattered repeatedly), keep this
@@ -654,6 +656,49 @@ unverifiable-from-this-sandbox things actually work on the real
 production deployment: dark theme, PWA install hint, empty state
 copy, and the Vercel routing/static-serving setup from earlier in this
 session all render correctly on the live URL.
+
+**Follow-up (new session continuation): sprint items #11 and #15 shipped.**
+`frontend/js/projects.js` + `frontend/css/projects.css` — commit `5a29249`.
+
+- **#11 (search bar):** `<input type="search">` above the project list,
+  client-side filter against `allProjects` (no extra network requests).
+  Filters on both `name` and `description`. Empty-state copy adapts: loading
+  state while fetching, \"no projects\" when the list is genuinely empty, \"no
+  match\" when a search term filters everything out. Clears on re-mount so
+  navigating away and back resets the filter state correctly. `searchTerm`
+  is module-scoped within the closure so `applyFilter()` and `refresh()` both
+  have access without threading it through every call.
+- **#15 (FAB + create modal):** removed the inline create form that was
+  mounted directly on the page. Replaced with a blue circular FAB fixed
+  bottom-right (above tab bar + safe-area inset) that opens a modal sheet.
+  On mobile (<480px) the modal slides up from the bottom as a sheet (CSS
+  `slideUp` keyframe, `transform: translateY`). `buildCreateFormEl()` was
+  extracted from the old inline mount assumption — same form logic, now
+  reusable as a function that takes `onCreated` / `showErr` callbacks so
+  errors surface inside the modal's own `statusArea` rather than behind the
+  overlay on the main page. FAB appended to `mountEl` not `document.body`
+  so the router naturally clears it on navigation while still positioning
+  `fixed` relative to viewport. `.aisapp-project-list` gets bottom padding
+  so the last card isn't obscured by the FAB.
+
+**Code-reviewed prior to ledger entry** (live server unreachable from this
+sandbox — same constraint as prior entries). Specific things checked:
+- FAB modal correctly guards against stacking (same `document.querySelector('.aisapp-modal-overlay')` guard as `confirmDestructive`).
+- Escape + tap-outside both close the create modal (safe here — unlike the
+  token reveal, nothing is lost by dismissing an unfilled form).
+- `buildCreateFormEl`'s success path correctly sequences: close modal first,
+  THEN show token modal — the two can't coexist (focus trap, z-index).
+- `applyFilter` correctly distinguishes between \"list is loading/empty\"
+  (don't show \"no match\") vs \"search filtered everything out\" (show the
+  targeted empty state) — both code paths confirmed correct in the source.
+- `refresh()` correctly resets to full list after create/delete (calls
+  `applyFilter()` which uses current `searchTerm` — so if you had a search
+  active and then created a matching project, it stays in view).
+
+No live verification was possible — standard sandbox network constraint.
+Whoever has the real deployed URL should create a project via the FAB,
+confirm the token modal appears, and run a search to confirm filtering
+works end-to-end before this is marked fully verified.
 
 ### Session 4 — Security & hardening review
 **Status: shipped, ongoing.** Audited `fileOps.js`/`store.js` path-safety,
