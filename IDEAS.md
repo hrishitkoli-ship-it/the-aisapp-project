@@ -222,6 +222,40 @@ Size: unknown until someone can verify against a real Turso instance
 sessions' sandboxes so far have not had).
 — Session 1
 
+### Multi-device support: build it for real, or correct the comments claiming it exists
+Found while fixing #16's ToS gate (see Session Ledger). `routes/device.js`'s
+header comment says `aisapp_devices` "can hold more than one device's
+identity" and that the delete-cascade was scoped to `listProjectIdsForDevice(code)`
+specifically *because* of that. `store.js`'s actual `getDevice()` is
+hardcoded single-row (`ORDER BY created_at ASC LIMIT 1`, no `WHERE`
+clause tied to any request-specific identity at all) — there is only
+ever one device, period, regardless of what called it or why. Every
+other device.js/store.js function (`getOrCreateDeviceCode`,
+`hasDeviceAcceptedTos`, the write-gate secret) inherits this same
+single-row assumption, so the app today is single-device-per-deployment
+in practice, whatever one comment claims motivated a change.
+
+This is the exact KFS #6 pattern (comment describes capability code
+doesn't have) for the 3rd time — see that row's own note in
+`INSTRUCTIONS.md`. Not fixing either direction myself: correcting the
+comment is cheap but doesn't resolve why someone wrote "can hold more
+than one device's identity" in the first place (did an earlier version
+of this file actually filter by something, and that got lost in a
+rewrite the way KFS #7/#9 describe? or was this aspirational from the
+start?) — and actually BUILDING real multi-device support (a per-
+request device identity, e.g. a cookie or header, instead of "the one
+row that exists") is a real architecture decision with security
+implications (SECURITY.md §3b territory) that shouldn't happen as a
+side effect of an unrelated ToS-gate fix. Flagging for a real decision
+either way, per this file's own "nobody touches an idea's status but
+the human" rule — this one's arguably bigger than a normal idea
+(it's a proposed *rule*, not a feature), but the same non-self-approval
+principle applies even more here, not less.
+Size: investigation first (small), then either small (fix the comment)
+or large (build real multi-device identity resolution) depending on
+what that investigation finds.
+— Session 4
+
 ---
 
 ## In progress

@@ -100,8 +100,10 @@ the-aisapp-project/
 │   │   ├── activity.js        Shared activity-timeline component         ✅ DONE (S2)
 │   │   ├── roster.js          Page 2: AI Session Roster                  ✅ DONE (S2)
 │   │   ├── instructions.js    Page 3: Instructions/approval gate         ✅ DONE (S2)
+│   │   ├── migration.js       Cross-device secret transfer (Web Crypto)  ✅ DONE (undocumented until Session 4's audit pass -- see Session Ledger)
 │   │   └── pages/
-│   │       └── workspace.js   Page 1: tree/editor/conflict UI            ✅ DONE (S1)
+│   │       ├── workspace.js   Page 1: tree/editor/conflict UI            ✅ DONE (S1)
+│   │       └── settings.js    Device identity, migration UI, ToS gate    ✅ DONE (undocumented until Session 4's audit pass; ToS gate now also covers project creation, not just file writes -- see Session Ledger)
 │   └── icons/                 PWA icons (192/512)                        ✅ DONE (S1)
 ├── projects/                  Local-dev runtime data, gitignored
 ├── public/                    Build artifact (vercel-build-public.js), gitignored
@@ -400,9 +402,14 @@ whoever commits last winning.
   files directly (OAuth or PAT).
 
 ### Session 4 (security / hardening / compliance + review)
-- **#16** -- Privacy Policy + Terms & Conditions links in the home
-  page footer. Require acceptance (checkbox/modal) before the first
-  project can be created.
+- **#16** ✅ **SHIPPED** -- Terms & Privacy acceptance now genuinely
+  required before the first project can be created (previously only
+  gated file writes -- see Session Ledger for the full finding and
+  fix). Links/acceptance UI live on the `#/settings` page rather than
+  literally in a home-page footer -- this app's shell has no footer to
+  put them in, so the settings icon in the header is the equivalent
+  entry point. Flagging the placement adaptation explicitly rather
+  than silently deviating from the spec's literal wording.
 - **Standing, in addition to #16**: review Priority 1/2 items as they
   land from Sessions 1 and 2, consistent with this session's
   established audit role and Rule 6 -- e.g., confirm new animations
@@ -468,7 +475,7 @@ the same thing a third time.
 | 3 | An `async` Express route handler throws/rejects with no `try/catch`, and Express 4 doesn't route that to error middleware automatically | Missing `try/catch` + `next(err)` around `await` calls in a route handler | Every async handler needs its own `try/catch`, or a wrapper that catches and forwards to `next()`. Found independently **twice** — audit any new async route handler for this specifically | Session 4 (device DELETE crash), Session 3 (`routes/projects.js` create/regenerate/delete) |
 | 4 | **[RESOLVED — see correction note near top of file for live-verification evidence]** File *content* storage is implemented twice, disagreeing: `fileOps.js` was rewritten to call `store.run()` against Turso, but the live `store.js` is still the fs-JSON version with no `run()` method. **Session 4 found this same root cause (route code written against a schema that isn't the live one) is not confined to `files.js`/`fileOps.js`** — `routes/projects.js`'s own header comment describes an `aisapp_projects` Turso table with automatic `ON DELETE CASCADE` and schema-default columns that do not exist in the live JSON-file `store.js`. This is why `POST /api/projects` currently creates an index entry but never writes a real `project.json` — confirmed live, not inferred (a created project immediately 404s on every subsequent read). See row 6 below for a related, now-fixed symptom of this same mismatch | Two (or more) sessions' work landed on top of each other mid-decision, before either fully replaced the other, and the affected surface is broader than first realized | Not a pick-a-line-and-fix-it bug — a real architectural call (Turso table vs. some other approach) that Session 2 is mid-deciding. Don't touch `files.js`/`fileOps.js`/`routes/projects.js` without reading Session 3's flag in the Session Ledger first. **If you find a THIRD file exhibiting this pattern, that's the point this needs to stop being "wait for Session 2" and become an all-hands architectural decision** — see Rule 6/Maintaining This File on updating this row rather than creating a fourth near-duplicate one | Session 3, verified live (`store.run is not a function`). Scope widened by Session 4, verified live (`project.json` never written, every created project immediately unreachable). **Resolved by Session 4**: real schema (`aisapp_devices`/`aisapp_projects`/`aisapp_files`) applied directly to the live Turso database via its SQL console; human confirmed the live app went from a hard `500` to working correctly, including a successful live device-secret creation |
 | 5 | A storage write fails because the filesystem is read-only (e.g. a serverless environment), and the raw `fs` error surfaces as an opaque 500 | Vercel's deployed bundle is read-only outside `/tmp`; no distinction was made between "bug" and "expected environment limitation" | Catch the specific read-only error codes (`EROFS`/`EACCES`/`ENOENT`/`EPERM` — confirmed via a real read-only mount test, not assumed; deliberately excludes `ENOSPC` so a real full-disk problem doesn't get mislabeled) and throw a typed error the central handler turns into a clean `503` | Session 3 |
-| 6 | A route's own comments describe a Turso/SQL schema (table names, FK cascades, parameterized queries) that doesn't exist anywhere in the actual `store.js` it calls | A migration was planned/assumed complete and documented as such in code comments, before the underlying file was actually changed to match | Don't trust a file's comments about *another* file's behavior — verify by reading that other file directly. `grep` for the specific function/table names the comment claims exist | Session 3 (`routes/projects.js` header + inline comments, twice — see Session Ledger) |
+| 6 | A route's own comments describe a Turso/SQL schema (table names, FK cascades, parameterized queries) that doesn't exist anywhere in the actual `store.js` it calls | A migration was planned/assumed complete and documented as such in code comments, before the underlying file was actually changed to match | Don't trust a file's comments about *another* file's behavior — verify by reading that other file directly. `grep` for the specific function/table names the comment claims exist | Session 3 (`routes/projects.js` header + inline comments, twice — see Session Ledger). **3rd occurrence, Session 4:** `routes/device.js`'s header claims `aisapp_devices` "can hold more than one device's identity" and that delete-cascade scoping was updated accordingly for that reason. `store.js`'s actual `getDevice()` is hardcoded single-row (`ORDER BY created_at ASC LIMIT 1`, no `WHERE` on anything device-specific) — there has only ever been one device, full stop, regardless of what the comment says motivated the delete-cascade change. Not fixed (bigger call than this session's own #16 fix warranted — see IDEAS.md). Per this row's own note below about a 3rd occurrence, flagging via IDEAS.md rather than unilaterally adding a Non-Negotiable Rule. |
 | 7 | A route handler is rewritten for a new concern (e.g. bundling an encryption key into the token) and silently drops an unrelated call it used to make (e.g. `saveProject()`, `generateDeviceCode()`), because the rewrite was done against a mental model of the datastore that had already changed elsewhere | Two independent pieces of in-flight work (a datastore migration + a token-format change) landed on the same file at different times, each written against a different assumption about the other | After any rewrite of a route handler, re-run the FULL lifecycle for that resource (create, single-lookup, update, delete) against the real server — not just the specific case the rewrite was for. This is genuinely Rule 6, just stated for the specific case of "a handler got rewritten," not only "new code got written" | Session 3 (device-code embedding dropped a 2nd time; `saveProject()`/`removeProjectDir()` both silently dropped in the same rewrite). **Also the exact mechanism behind row 9's recurrence below** — same file, same pattern, different dropped fix |
 | 8 | Two files that are supposed to share one definition (`app.js` as the shared Express app; `server.js`/`api/index.js` as its two consumers) silently diverge because one of them was never actually rewritten to depend on the other — it just independently rebuilt an equivalent-looking copy instead | `server.js` predates the `app.js` split and was never actually converted to import it, despite `app.js`'s own header comment claiming it was. No test exercised `server.js` specifically after `app.js` started gaining new middleware (helmet/CSP, rate limiting), so the drift wasn't visible until something added to `app.js` was checked against the real entry point and found completely absent | When a refactor claims "two consumers share one definition," grep for the actual `require()`/`import` proving that, don't trust the comment. If a fix only seems to take effect through one of two supposedly-equivalent entry points, suspect this pattern immediately | Session 4 — found while verifying CSP headers actually reached `node backend/server.js`, the real local/Termux entry point, not just `app.js` loaded in isolation |
 | 9 | **[RECURRED ONCE ALREADY — see row 7 for why]** A route's own comment says "no secrets included" / matches clearly-intended behavior, but the actual response leaks a secret field anyway, because the route was written against a different store.js/schema shape than the one actually live (same root cause family as row 4, different concrete symptom) | `GET /api/projects` returned every project's `tokenHash` in the clear to any unauthenticated caller — the route's own `stripSecret()` helper exists and is correctly used by three OTHER routes in the same file, just not this one, because `store.listProjects()` on the live store.js returns a different (fuller) shape than whatever this route was written expecting | Don't trust a route's own comment describing its output shape — check what the live `store.*` function actually returns and confirm the response is filtered through the same secret-stripping helper every sibling route in the file already uses. Fixed by routing the response through the existing `stripSecret()` (`.map(stripSecret)`) rather than inventing a new filtering approach. **This exact fix was lost once already** when `routes/projects.js` was independently rewritten from a base that predated it (row 7's pattern, applied to this same fix) — re-applied and re-verified live a second time; full writeup in `KNOWN_ISSUES.md` specifically so a THIRD occurrence is less likely (grep-able, not just buried in a diff) | Session 4 — found live, not by code review, while testing an unrelated fix (`app.js`/`server.js` reconciliation) end-to-end. Recurrence found and re-fixed later the same session, immediately after pulling a new round of `routes/projects.js` changes |
@@ -995,6 +1002,76 @@ follow-up correction commit does.
 
 No code changes resulted from either the original mislabeled pass or
 this correction — both are documentation/ledger-accuracy work only.
+
+**Follow-up (same session): #16 (Terms & Privacy acceptance gate)
+found substantially unshipped, despite real code already existing for
+it.** `frontend/js/pages/settings.js`, `frontend/js/migration.js`, and
+`frontend/css/settings.css` all existed, all worked, and were entirely
+absent from this file — no file-tree entry, no ledger entry, no lane
+note, from any session. Closed that documentation gap directly (see
+file-tree table above) rather than just fixing the gap this entry is
+actually about, since leaving it undocumented after finding it would
+repeat the exact failure mode this file exists to prevent.
+
+**The actual gap, once found:** #16 specifies acceptance required
+"before the first project can be created." What existed instead
+(`backend/routes/files.js`) gated file *writes*, not project creation
+— a device could create unlimited projects, never see the ToS text,
+and only hit a wall on its first file write. Separately, and worse:
+`POST /api/device/accept-tos` **required a device to already exist**
+(404'd otherwise, telling the caller to "create a project first") —
+meaning even if project creation HAD been gated on acceptance as
+originally written, a person hitting that gate for the very first time
+on a brand-new install would have had no way to actually accept it.
+Two bugs compounding into a dead end, not one.
+
+**Fix — three files:**
+- `backend/db/store.js`: added `hasDeviceAcceptedTos()`, a no-arg
+  wrapper around the existing single-device `getDevice()` contract.
+  Exists specifically so project creation can check acceptance without
+  needing a `deviceCode` resolved first — the exact chicken-and-egg
+  `hasAcceptedTos(deviceCode)` has by design (correctly, for its own
+  file-write use case, per its own doc comment).
+- `backend/routes/device.js`: `POST /accept-tos` now calls
+  `store.getOrCreateDeviceCode(generateDeviceCode)` before accepting,
+  same lazy-create pattern `routes/projects.js` already used, instead
+  of requiring a device to pre-exist. Closes the dead end above.
+- `backend/routes/projects.js`: `POST /` (create) now checks
+  `hasDeviceAcceptedTos()` and returns `403
+  { requiresTosAcceptance: true }` if not accepted — placed after
+  `requireDeviceSecret`, which already guarantees a device row exists
+  by that point via its own lazy-create logic, so this is never
+  checking against a device that doesn't exist yet.
+
+**Verified against a real local libSQL engine**, not just read as
+plausible: installed `@tursodatabase/database` (local/file-based,
+dev-only, same package Session 2 used to prove the size-limit triggers
+— see that entry above) in an isolated scratch directory, created the
+real `aisapp_devices` table from `schema.sql` verbatim, and ran the
+exact SQL each function above issues — 7 checks, 7 passed: fresh DB
+correctly closed; accepting ToS as a genuine first action (no prior
+device) correctly creates the device and succeeds; the gate correctly
+opens after acceptance; double-accepting is idempotent and doesn't
+throw; `getOrCreateDeviceCode` called twice returns the same code and
+creates exactly one row, not two. **What this does NOT cover, same
+disclosed limit as every entry above:** a real Turso cloud connection
+and a full Express boot — no network path to `*.turso.io` from this
+sandbox. The SQL logic is verified for real; the actual deployed
+behavior (device-secret headers round-tripping correctly through a
+live 401→retry→403→settings→retry flow end to end) is not.
+
+**Deliberately NOT changed:** the literal "links in the home page
+footer" wording. This app's shell has a header + tab bar, no footer —
+the existing settings-icon entry point is the equivalent surface, not
+a scope cut. Noted explicitly in Lane Assignments rather than silently
+substituted.
+
+**Found, not fixed, flagged instead of self-decided:**
+`routes/device.js`'s header comment claims `aisapp_devices` supports
+multiple devices; `store.js`'s `getDevice()` is hardcoded single-row
+and always has been. Third occurrence of the KFS #6 pattern (see that
+row's own note) — a real architecture question, not something to
+resolve as a side effect of a ToS-gate fix. Full writeup in IDEAS.md.
 
 ### Session 2 — Session Roster + Instructions pages
 **Status: shipped.** `frontend/js/roster.js`, `frontend/js/instructions.js`,
