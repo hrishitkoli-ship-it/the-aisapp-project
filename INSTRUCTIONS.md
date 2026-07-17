@@ -1073,6 +1073,46 @@ and always has been. Third occurrence of the KFS #6 pattern (see that
 row's own note) — a real architecture question, not something to
 resolve as a side effect of a ToS-gate fix. Full writeup in IDEAS.md.
 
+**Follow-up (same session): standing-duty audit sweep, no new Session
+1/2 landings to review (checked full commit log for #6/#7/#9/#10/#12/
+#14 -- zero hits, none have shipped yet), so re-verified this
+session's own prior hardening survived the rebrand/merge chain
+instead (20+ rebrand commits, three explicit merges of ToS/migration
+functions into the device-secret system -- exactly the conditions
+that have caused silent regressions in this repo before, per KFS #7/
+#9). Checked directly, not assumed:**
+
+- `requireDeviceSecret` still applied to all four state-changing human
+  routes (`POST /api/projects`, `POST /:projectId/regenerate-token`,
+  `DELETE /:projectId`, `DELETE /api/device`) — none dropped it.
+- `verifyToken` still uses `crypto.timingSafeEqual` on equal-length
+  buffers, not a plain `===` — constant-time comparison intact.
+- `helmet`'s CSP directives (the specific `sha256-...` script-hash
+  allowance, `frameAncestors`, `objectSrc: 'none'`, etc.) are all still
+  present in `app.js`, not silently simplified or dropped during any
+  merge.
+- `fileOps.js`'s path-safety guard (`PathSafetyError` — null-byte
+  rejection, `..`-segment resolution, absolute-path rejection) is
+  intact and still the thing `files.js`'s catch blocks actually check
+  against.
+- Rate-limit tiering matches `rateLimit.js`'s own documented design
+  exactly: `humanSensitiveLimiter` deliberately scoped to only the
+  four routes above (not file reads/writes, which was a deliberate
+  choice per that file's header, not a gap) — verified this is what
+  the code actually does, not just what the comment claims, since
+  that exact gap (comment vs. code) is what KFS #6 is about.
+- Frontend device-secret handling (`X-Device-Secret` header,
+  `aisapp:deviceSecret` localStorage key with old-key migration from
+  `aihub:deviceSecret`) survived the rebrand correctly.
+- Confirmed this session's own new #16 403 (`requiresTosAcceptance`)
+  can't collide with the existing 401 device-secret retry logic in
+  `projects.js`'s `api()` wrapper — the retry branch checks for
+  `body.deviceSecret` specifically, which a 403 never has, so it falls
+  straight through to the normal error path.
+
+Nothing found broken. Recording that this was actually checked (not
+skipped as "probably fine") is itself the point, per Rule 6.
+
 ### Session 2 — Session Roster + Instructions pages
 **Status: shipped.** `frontend/js/roster.js`, `frontend/js/instructions.js`,
 `frontend/js/activity.js` (shared component), `frontend/css/instructions-roster.css`.
