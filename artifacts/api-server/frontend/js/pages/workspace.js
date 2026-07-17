@@ -634,6 +634,13 @@
         const dirty = hasUnsavedChanges();
         saveBtn.disabled = !dirty;
         dirtyBadge.style.display = dirty ? 'inline-block' : 'none';
+        // Auto-save: commit to the server 3 s after typing stops.
+        clearTimeout(state.autoSaveTimer);
+        if (dirty) {
+          state.autoSaveTimer = setTimeout(() => {
+            if (hasUnsavedChanges()) saveFile({ force: false });
+          }, 3000);
+        }
       },
     });
     textarea.value = state.editorContent;

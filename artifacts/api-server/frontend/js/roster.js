@@ -178,8 +178,14 @@
       ]),
       renderTaskQueue(session.taskQueue),
       h('div', { class: 'aisapp-roster-card-meta' }, [
-        session.lastSeenAt ? `Last seen ${timeAgo(session.lastSeenAt)}` : null,
-        session.registeredAt ? ` \u00B7 registered ${timeAgo(session.registeredAt)}` : null,
+        session.lastSeenAt
+          ? h('span', { 'data-ts': session.lastSeenAt, 'data-ts-prefix': 'Last seen' },
+              `Last seen ${timeAgo(session.lastSeenAt)}`)
+          : null,
+        session.registeredAt
+          ? h('span', { 'data-ts': session.registeredAt, 'data-ts-prefix': '\u00B7 registered' },
+              ` \u00B7 registered ${timeAgo(session.registeredAt)}`)
+          : null,
       ]),
     ]);
   }
