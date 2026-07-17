@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<!--
+  index.html
+  ------------------------------------------------------------------
+  Session 1 lane. Replaces the placeholder Session 3 left here
+  (see git history -- their note: "SESSION 1: replace this file
+  freely"). The one contract preserved from their placeholder:
+  <div id="app"> is still the mount point ProjectManager.init() and
+  AisappWorkspace.mount() both receive.
+  ------------------------------------------------------------------
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>AI Collaborative Hub</title>
+  <meta name="description" content="Local-first project hub for coordinating a human and multiple AI coding agents." />
+
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#0d0d0f" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/projects.css" />
+  <link rel="stylesheet" href="css/workspace.css" />
+  <link rel="stylesheet" href="css/instructions-roster.css" />
+  <link rel="stylesheet" href="css/settings.css" />
+</head>
+<body>
+  <div id="app-root">
+    <header id="app-header"></header>
+    <main id="app-main">
+      <div id="app"></div>
+    </main>
+    <nav id="app-tabbar" aria-label="Project sections"></nav>
+  </div>
+
+  <!-- Load order matters: theme + project manager first (router and
+       every page module call into them), then activity.js before
+       instructions.js (it calls window.ActivityTimeline internally),
+       then the remaining page modules, router last since it fires the
+       first render() referencing everything above. No modules/bundler
+       -- plain sequential scripts. -->
+  <script src="js/icons.js"></script>
+  <script src="js/theme.js"></script>
+  <script src="js/projects.js"></script>
+  <script src="js/activity.js"></script>
+  <script src="js/roster.js"></script>
+  <script src="js/instructions.js"></script>
+  <script src="js/migration.js"></script>
+  <script src="js/pages/workspace.js"></script>
+  <script src="js/pages/settings.js"></script>
+  <script src="js/router.js"></script>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js').catch((err) => {
+          console.warn('Service worker registration failed:', err);
+        });
+      });
+    }
+  </script>
+</body>
+</html>
+

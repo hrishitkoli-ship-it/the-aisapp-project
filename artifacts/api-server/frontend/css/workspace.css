@@ -1,0 +1,269 @@
+/**
+ * workspace.css
+ * ------------------------------------------------------------------
+ * Session 1 lane. Styles specific to the Workspace page (file tree +
+ * editor + conflict diff). Shared component classes (.aisapp-btn,
+ * .aisapp-status, .aisapp-modal, .aisapp-empty-state) already exist in
+ * projects.css -- this file only adds what's genuinely new here,
+ * using the same --aisapp-* tokens from base.css throughout.
+ * ------------------------------------------------------------------
+ */
+
+.aisapp-ws-toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+/* ---- File tree ---- */
+
+.aisapp-ws-tree-panel {
+  padding: 6px;
+}
+
+.aisapp-tree-level {
+  display: flex;
+  flex-direction: column;
+}
+
+.aisapp-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  color: var(--aisapp-text);
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  cursor: pointer;
+  border-radius: 6px;
+  width: 100%;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.aisapp-tree-row:hover,
+.aisapp-tree-row:focus-visible {
+  background: var(--aisapp-surface-raised);
+}
+
+.aisapp-tree-row--file.is-selected {
+  background: var(--aisapp-accent-dim);
+  color: var(--aisapp-accent);
+}
+
+.aisapp-tree-caret {
+  color: var(--aisapp-text-dim);
+  width: 12px;
+  flex-shrink: 0;
+  font-size: 0.75rem;
+}
+
+.aisapp-tree-icon {
+  flex-shrink: 0;
+}
+
+.aisapp-tree-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- Editor ---- */
+
+.aisapp-ws-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.aisapp-ws-editor-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.aisapp-ws-editor-path {
+  color: var(--aisapp-text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.85rem;
+}
+
+.aisapp-ws-editor-body {
+  display: flex;
+  background: var(--aisapp-surface);
+  border: 1px solid var(--aisapp-border);
+  border-radius: var(--aisapp-radius);
+  overflow: hidden;
+  height: 55vh;
+  min-height: 280px;
+}
+
+.aisapp-ws-gutter {
+  flex-shrink: 0;
+  padding: 10px 8px;
+  text-align: right;
+  color: var(--aisapp-text-dim);
+  background: var(--aisapp-surface-raised);
+  border-right: 1px solid var(--aisapp-border);
+  overflow-y: hidden;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  user-select: none;
+}
+
+.aisapp-ws-textarea {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--aisapp-text);
+  padding: 10px 12px;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  resize: none;
+  outline: none;
+  /* Deliberately no wrap: keeps every line's gutter number aligned to
+     its actual row. Long lines scroll horizontally instead -- a plain
+     textarea can't reflow-wrap while keeping a separate gutter in
+     sync without a much heavier editor component. */
+  white-space: pre;
+  overflow: auto;
+}
+
+.aisapp-ws-editor-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.aisapp-ws-editor-actions .aisapp-btn--danger {
+  margin-left: auto;
+}
+
+/* ---- Conflict diff ---- */
+
+.aisapp-modal--wide {
+  max-width: 640px;
+}
+
+.aisapp-diff {
+  background: var(--aisapp-surface-raised);
+  border: 1px solid var(--aisapp-border);
+  border-radius: 8px;
+  padding: 8px 0;
+  max-height: 40vh;
+  overflow-y: auto;
+  margin-bottom: 14px;
+  font-family: var(--aisapp-font-mono);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.aisapp-diff-line {
+  padding: 0 10px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.aisapp-diff-line--added {
+  background: var(--aisapp-success-dim);
+  color: var(--aisapp-success);
+}
+
+.aisapp-diff-line--removed {
+  background: var(--aisapp-danger-dim);
+  color: var(--aisapp-danger);
+}
+
+.aisapp-diff-line--same {
+  color: var(--aisapp-text-dim);
+}
+
+.aisapp-diff-line--collapsed {
+  color: var(--aisapp-text-dim);
+  text-align: center;
+  opacity: 0.6;
+}
+
+.aisapp-diff-toolong {
+  padding: 10px 14px;
+  margin: 0;
+  color: var(--aisapp-text-dim);
+  font-family: var(--aisapp-font-body);
+  font-size: 0.85rem;
+}
+
+/* ---- Skeleton loading states (item 5) ----
+ * Lightweight CSS shimmer, no dependency. Matches the final layout's
+ * real row height/padding (.aisapp-tree-row: 8px 10px padding, see
+ * that rule above) rather than a generic spinner, so there's no
+ * visible layout shift once real content replaces it.
+ */
+
+@keyframes aisapp-shimmer {
+  0% { background-position: -200px 0; }
+  100% { background-position: calc(200px + 100%) 0; }
+}
+
+.aisapp-skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+}
+
+.aisapp-skeleton-bar {
+  height: 14px;
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    var(--aisapp-surface-raised) 25%,
+    var(--aisapp-border) 37%,
+    var(--aisapp-surface-raised) 63%
+  );
+  background-size: 400px 100%;
+  animation: aisapp-shimmer 1.4s ease-in-out infinite;
+}
+
+.aisapp-skeleton-icon {
+  width: 15px;
+  height: 15px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  background: linear-gradient(
+    90deg,
+    var(--aisapp-surface-raised) 25%,
+    var(--aisapp-border) 37%,
+    var(--aisapp-surface-raised) 63%
+  );
+  background-size: 400px 100%;
+  animation: aisapp-shimmer 1.4s ease-in-out infinite;
+}
+
+.aisapp-skeleton-editor-line {
+  height: 14px;
+  margin: 6px 0;
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    var(--aisapp-surface-raised) 25%,
+    var(--aisapp-border) 37%,
+    var(--aisapp-surface-raised) 63%
+  );
+  background-size: 400px 100%;
+  animation: aisapp-shimmer 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aisapp-skeleton-bar,
+  .aisapp-skeleton-icon,
+  .aisapp-skeleton-editor-line {
+    animation: none;
+  }
+}

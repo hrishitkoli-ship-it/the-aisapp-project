@@ -1,0 +1,450 @@
+/**
+ * instructions-roster.css
+ * ------------------------------------------------------------------
+ * Session 2 lane. Styles for the AI Session Roster page, the
+ * Instructions & Functionalities page, and the shared Activity
+ * Timeline component.
+ *
+ * Depends on the CSS custom properties defined in projects.css
+ * (--aisapp-bg, --aisapp-surface, --aisapp-accent, etc.) -- loaded
+ * after that file, never redefines the :root tokens. Same
+ * `aisapp-` selector prefix for the same reason Session 3 used it:
+ * safe to drop into Session 1's shell with zero collisions.
+ *
+ * No CSS framework, no preprocessor -- see INSTRUCTIONS.md
+ * architecture rule #1 (no build step).
+ * ------------------------------------------------------------------
+ */
+
+/* ---- Shared section scaffolding ---- */
+
+.aisapp-page-subtitle {
+  font-size: 0.85rem;
+  color: var(--aisapp-text-dim);
+  margin: -12px 0 20px;
+  line-height: 1.4;
+}
+
+.aisapp-section-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 0;
+  color: var(--aisapp-text);
+}
+
+.aisapp-block-subtitle {
+  font-size: 0.8rem;
+  color: var(--aisapp-text-dim);
+  margin: -6px 0 12px;
+  line-height: 1.4;
+}
+
+.aisapp-instructions-block {
+  background: var(--aisapp-surface);
+  border: 1px solid var(--aisapp-border);
+  border-radius: var(--aisapp-radius);
+  padding: 14px;
+  margin-bottom: 20px;
+}
+
+.aisapp-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.aisapp-btn--sm {
+  padding: 6px 12px;
+  font-size: 0.85rem;
+}
+
+/* ---- Badges (extends projects.css .aisapp-badge) ---- */
+
+.aisapp-badge--count {
+  position: static;
+  background: var(--aisapp-danger);
+  margin-left: 6px;
+}
+
+.aisapp-badge--pending {
+  position: static;
+  background: var(--aisapp-surface-raised);
+  color: var(--aisapp-text-dim);
+  border: 1px solid var(--aisapp-border);
+}
+
+.aisapp-badge--approved {
+  position: static;
+  background: transparent;
+  color: var(--aisapp-success);
+  border: 1px solid var(--aisapp-success);
+}
+
+.aisapp-badge--rejected {
+  position: static;
+  background: transparent;
+  color: var(--aisapp-danger);
+  border: 1px solid var(--aisapp-danger);
+}
+
+.aisapp-badge--priority-high,
+.aisapp-badge--priority-urgent {
+  position: static;
+  background: var(--aisapp-danger-dim);
+  color: var(--aisapp-danger);
+}
+
+.aisapp-badge--priority-low {
+  position: static;
+  background: transparent;
+  color: var(--aisapp-text-dim);
+  border: 1px solid var(--aisapp-border);
+}
+
+/* ==================================================================
+   AI Session Roster
+   ================================================================== */
+
+.aisapp-roster-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.aisapp-roster-count {
+  font-size: 0.85rem;
+  color: var(--aisapp-text-dim);
+}
+
+.aisapp-roster-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.aisapp-roster-card {
+  background: var(--aisapp-surface);
+  border: 1px solid var(--aisapp-border);
+  border-radius: var(--aisapp-radius);
+  padding: 14px;
+}
+
+.aisapp-roster-card-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.aisapp-status-dot {
+  width: 9px;
+  height: 9px;
+  min-width: 9px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.aisapp-status-dot--active {
+  background: var(--aisapp-success);
+  box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.15);
+}
+
+.aisapp-status-dot--idle {
+  background: var(--aisapp-text-dim);
+}
+
+.aisapp-status-dot--stale {
+  background: var(--aisapp-danger);
+  opacity: 0.7;
+}
+
+.aisapp-roster-card-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.aisapp-roster-card-label {
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--aisapp-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.aisapp-roster-card-status {
+  font-size: 0.75rem;
+  color: var(--aisapp-text-dim);
+  flex-shrink: 0;
+}
+
+.aisapp-roster-card-row {
+  display: flex;
+  gap: 8px;
+  font-size: 0.85rem;
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+
+.aisapp-roster-card-field {
+  color: var(--aisapp-text-dim);
+  flex-shrink: 0;
+  min-width: 88px;
+}
+
+.aisapp-roster-card-task {
+  color: var(--aisapp-text);
+}
+
+.aisapp-roster-card-meta {
+  font-size: 0.72rem;
+  color: var(--aisapp-text-dim);
+  margin-top: 8px;
+  opacity: 0.8;
+}
+
+/* ---- Task queue nested in a roster card ---- */
+
+.aisapp-roster-queue {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--aisapp-border);
+}
+
+.aisapp-roster-queue-label {
+  font-size: 0.75rem;
+  color: var(--aisapp-text-dim);
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+}
+
+.aisapp-roster-queue-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.aisapp-roster-queue-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 0.8rem;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--aisapp-surface-raised);
+  flex-wrap: wrap;
+}
+
+.aisapp-roster-queue-item--done {
+  opacity: 0.55;
+}
+
+.aisapp-roster-queue-from {
+  font-weight: 600;
+  color: var(--aisapp-accent);
+  flex-shrink: 0;
+}
+
+.aisapp-roster-queue-msg {
+  color: var(--aisapp-text);
+  flex: 1;
+  min-width: 0;
+}
+
+/* ==================================================================
+   Instructions & Functionalities
+   ================================================================== */
+
+.aisapp-notes-textarea {
+  min-height: 100px;
+}
+
+.aisapp-notes-save-status {
+  font-size: 0.75rem;
+  color: var(--aisapp-text-dim);
+  min-height: 1em;
+}
+
+.aisapp-functionality-list,
+.aisapp-assignment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.aisapp-functionality-item {
+  background: var(--aisapp-surface-raised);
+  border: 1px solid var(--aisapp-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.aisapp-functionality-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--aisapp-text);
+}
+
+.aisapp-functionality-desc {
+  font-size: 0.82rem;
+  color: var(--aisapp-text-dim);
+  margin-top: 3px;
+  line-height: 1.4;
+}
+
+.aisapp-functionality-meta,
+.aisapp-assignment-meta {
+  display: flex;
+  gap: 10px;
+  font-size: 0.72rem;
+  color: var(--aisapp-text-dim);
+  margin-top: 6px;
+  opacity: 0.8;
+}
+
+.aisapp-assignment-item {
+  background: var(--aisapp-surface-raised);
+  border: 1px solid var(--aisapp-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.aisapp-assignment-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.aisapp-assignment-title {
+  font-size: 0.9rem;
+  color: var(--aisapp-text);
+  line-height: 1.4;
+}
+
+.aisapp-assignment-fn {
+  font-weight: 600;
+}
+
+.aisapp-assignment-target {
+  color: var(--aisapp-accent);
+}
+
+.aisapp-assignment-reason {
+  font-size: 0.82rem;
+  color: var(--aisapp-text-dim);
+  margin-top: 6px;
+  line-height: 1.4;
+}
+
+.aisapp-assignment-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* ==================================================================
+   Shared Activity Timeline
+   ================================================================== */
+
+.aisapp-activity-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.aisapp-activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.aisapp-activity-row {
+  display: flex;
+  gap: 10px;
+  padding: 9px 6px;
+  border-bottom: 1px solid var(--aisapp-border);
+}
+
+.aisapp-activity-row:last-child {
+  border-bottom: none;
+}
+
+.aisapp-activity-icon {
+  flex-shrink: 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  width: 20px;
+  text-align: center;
+}
+
+.aisapp-activity-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.aisapp-activity-message {
+  font-size: 0.85rem;
+  color: var(--aisapp-text);
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.aisapp-activity-meta {
+  display: flex;
+  gap: 10px;
+  font-size: 0.72rem;
+  color: var(--aisapp-text-dim);
+  margin-top: 3px;
+  opacity: 0.8;
+}
+
+/* security_alert entries need to stand out from the rest of the feed
+   at a glance -- a human skimming a long list on mobile should not
+   have to read every row to notice a blocked traversal attempt. */
+
+.aisapp-activity-row--alert {
+  background: var(--aisapp-danger-dim);
+  border-radius: 8px;
+  border-bottom: none;
+  margin: 2px 0;
+}
+
+.aisapp-activity-row--alert .aisapp-activity-message {
+  color: var(--aisapp-danger);
+}
+
+.aisapp-activity-alert-tag {
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.68rem;
+  letter-spacing: 0.03em;
+  margin-right: 4px;
+}
+
+@media (max-width: 480px) {
+  .aisapp-roster-card-row {
+    flex-direction: column;
+    gap: 2px;
+  }
+  .aisapp-roster-card-field {
+    min-width: 0;
+  }
+  .aisapp-assignment-top {
+    flex-direction: column;
+    gap: 6px;
+  }
+}

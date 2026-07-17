@@ -1,0 +1,4 @@
+# This directory holds runtime data: one subfolder per project you
+# create in the app, each with its own files, session roster, and
+# instructions. Contents are gitignored on purpose -- see .gitignore.
+# This placeholder just keeps the folder itself present after a clone.

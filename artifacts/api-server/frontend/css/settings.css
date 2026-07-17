@@ -1,0 +1,87 @@
+/**
+ * settings.css
+ * ------------------------------------------------------------------
+ * Styles for pages/settings.js. Reuses .aisapp-instructions-block,
+ * .aisapp-section-title, .aisapp-block-subtitle from instructions-roster.css,
+ * and .aisapp-btn (+ variants), .aisapp-input, .aisapp-textarea,
+ * .aisapp-error-state, .aisapp-page-title from projects.css -- only
+ * settings-specific layout lives here. Also reuses .aisapp-theme-toggle
+ * directly for the header settings button (see router.js), so no new
+ * CSS needed there.
+ * ------------------------------------------------------------------
+ */
+
+.aisapp-settings-device-code {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.aisapp-settings-device-code-label {
+  font-size: 0.8rem;
+  color: var(--aisapp-text-dim);
+}
+
+.aisapp-settings-device-code-value {
+  font-family: var(--aisapp-font-mono);
+  font-size: 0.9rem;
+  background: var(--aisapp-surface-raised);
+  border: 1px solid var(--aisapp-border);
+  border-radius: 6px;
+  padding: 3px 8px;
+  color: var(--aisapp-text);
+}
+
+.aisapp-settings-danger-zone {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--aisapp-border);
+}
+
+.aisapp-settings-migration-link {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.aisapp-settings-migration-link input {
+  font-family: var(--aisapp-font-mono);
+  font-size: 0.8rem;
+}
+
+.aisapp-settings-tos-text {
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: var(--aisapp-text-dim);
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: 4px;
+  margin-bottom: 14px;
+}
+
+.aisapp-settings-tos-text p {
+  margin: 0 0 12px;
+}
+
+.aisapp-settings-tos-text p:last-child {
+  margin-bottom: 0;
+}
+
+.aisapp-settings-tos-status {
+  padding-top: 12px;
+  border-top: 1px solid var(--aisapp-border);
+}
+
+.aisapp-settings-tos-status--accepted {
+  color: var(--aisapp-success);
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.aisapp-settings-tos-status--pending p {
+  margin: 0 0 10px;
+  font-size: 0.82rem;
+  color: var(--aisapp-text-dim);
+}

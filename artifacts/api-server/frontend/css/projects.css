@@ -1,0 +1,494 @@
+/**
+ * projects.css
+ * ------------------------------------------------------------------
+ * Session 3 lane. All selectors prefixed `aisapp-` so this can be
+ * dropped into Session 1's shell without collisions. Dark theme by
+ * default since this is a "run it locally, look at it on your phone
+ * a lot" tool -- matches the screenshot of the GitHub app UI this
+ * project's owner already uses.
+ *
+ * No CSS framework, no preprocessor -- see INSTRUCTIONS.md
+ * architecture rule #1 (no build step).
+ *
+ * NOTE: the --aisapp-* custom properties this file uses are now
+ * defined in base.css (Session 1's shared design-token file), which
+ * also adds a [data-theme="light"] variant using these same names.
+ * The values below were Session 3's originals; base.css copied them
+ * verbatim rather than changing anything -- this file just no longer
+ * needs its own :root block since base.css is always loaded first.
+ * ------------------------------------------------------------------
+ */
+
+.aisapp-page-title {
+  font-size: 1.4rem;
+  font-weight: 600;
+  margin: 0 0 16px;
+  color: var(--aisapp-text);
+}
+
+/* ---- Install hint ---- */
+
+.aisapp-install-hint {
+  margin-bottom: 16px;
+}
+
+.aisapp-install-hint-text {
+  font-size: 0.85rem;
+  color: var(--aisapp-text-dim);
+  background: var(--aisapp-surface);
+  border: 1px solid var(--aisapp-border);
+  border-radius: var(--aisapp-radius);
+  padding: 10px 14px;
+  margin: 0;
+}
+
+/* ---- Search bar (#11) ---- */
+
+.aisapp-search-input {
+  display: block;
+  width: 100%;
+  background: var(--aisapp-surface);
+  border: 1px solid var(--aisapp-border);
+  border-radius: var(--aisapp-radius);
+  color: var(--aisapp-text);
+  padding: 10px 14px;
+  font-size: 0.95rem;
+  font-family: inherit;
+  box-sizing: border-box;
+  margin-bottom: 14px;
+  transition: border-color 0.12s ease;
+  /* Remove the browser-default search cancel button appearance on
+     WebKit -- the input already clears naturally when the user
+     backspaces, and the native button overlaps with any right-side
+     padding. Keep the type="search" for semantics/a11y. */
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.aisapp-search-input:focus {
+  outline: none;
+  border-color: var(--aisapp-accent);
+}
+
+.aisapp-search-input::placeholder {
+  color: var(--aisapp-text-dim);
+}
+
+/* ---- Create form (used inside the FAB modal, not inline) ---- */
+
+.aisapp-create-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.aisapp-input {
+  background: var(--aisapp-surface-raised);
+  border: 1px solid var(--aisapp-border);
+  border-radius: 8px;
+  color: var(--aisapp-text);
+  padding: 10px 12px;
+  font-size: 1rem;
+  font-family: inherit;
+  width: 100%;
+  box-sizing: border-box;
+  transition: border-color 0.12s ease;
+}
+
+.aisapp-input:focus {
+  outline: none;
+  border-color: var(--aisapp-accent);
+}
+
+.aisapp-textarea {
+  resize: vertical;
+  min-height: 44px;
+}
+
+/* ---- Buttons ---- */
+
+.aisapp-btn {
+  background: var(--aisapp-surface-raised);
+  border: 1px solid var(--aisapp-border);
+  color: var(--aisapp-text);
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 0.95rem;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.aisapp-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.aisapp-btn--primary {
+  background: var(--aisapp-accent);
+  border-color: var(--aisapp-accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.aisapp-btn--danger {
+  background: var(--aisapp-danger);
+  border-color: var(--aisapp-danger);
+  color: #fff;
+  font-weight: 600;
+}
+
+.aisapp-btn--subtle {
+  background: transparent;
+  border-color: var(--aisapp-border);
+  color: var(--aisapp-text-dim);
+  font-size: 0.85rem;
+  padding: 8px 12px;
+}
+
+.aisapp-icon-btn {
+  background: transparent;
+  border: 1px solid var(--aisapp-border);
+  color: var(--aisapp-text-dim);
+  border-radius: 8px;
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  font-size: 1rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.aisapp-icon-btn:hover,
+.aisapp-icon-btn:focus {
+  border-color: var(--aisapp-text-dim);
+  color: var(--aisapp-text);
+}
+
+.aisapp-icon-btn--danger:hover,
+.aisapp-icon-btn--danger:focus {
+  color: var(--aisapp-danger);
+  border-color: var(--aisapp-danger);
+}
+
+/* ---- FAB (#15) ---- */
+/* Blue circular button fixed at bottom-right, above the sticky tab
+   bar. 56px is the standard Material-style FAB touch target. The
+   bottom offset accounts for the tab bar's approximate height (~52px
+   of content + padding) plus the safe-area inset on notched phones,
+   so it doesn't sit behind the navigation strip on any device. */
+
+.aisapp-fab {
+  position: fixed;
+  right: 20px;
+  bottom: calc(68px + env(safe-area-inset-bottom, 0px));
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--aisapp-accent);
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(77, 141, 255, 0.45), 0 2px 6px rgba(0, 0, 0, 0.4);
+  z-index: 90; /* below modal overlays (1000) but above page content */
+  transition: background-color 0.12s ease, transform 0.1s ease, box-shadow 0.12s ease;
+}
+
+.aisapp-fab:hover {
+  background: color-mix(in srgb, var(--aisapp-accent) 85%, #fff);
+  box-shadow: 0 6px 20px rgba(77, 141, 255, 0.55), 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.aisapp-fab:active {
+  transform: scale(0.94);
+  box-shadow: 0 2px 8px rgba(77, 141, 255, 0.35), 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.aisapp-fab:focus-visible {
+  outline: 3px solid var(--aisapp-accent);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aisapp-fab {
+    transition: none;
+  }
+}
+
+/* ---- Project list ---- */
+
+.aisapp-project-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  /* Bottom padding so the last card isn't clipped by the FAB */
+  padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+}
+
+.aisapp-project-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.aisapp-project-card {
+  flex: 1;
+  text-align: left;
+  background: var(--aisapp-surface);
+  border: 1px solid var(--aisapp-border);
+  border-radius: var(--aisapp-radius);
+  padding: 12px 14px;
+  color: var(--aisapp-text);
+  font-family: inherit;
+  cursor: pointer;
+  position: relative;
+  min-width: 0; /* allow text truncation in flex child */
+}
+
+.aisapp-project-card:hover,
+.aisapp-project-card:focus {
+  border-color: var(--aisapp-accent);
+  outline: none;
+}
+
+.aisapp-project-card--current {
+  border-color: var(--aisapp-accent);
+  background: var(--aisapp-surface-raised);
+}
+
+.aisapp-project-card-name {
+  font-weight: 600;
+  font-size: 1rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.aisapp-project-card-desc {
+  font-size: 0.85rem;
+  color: var(--aisapp-text-dim);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.aisapp-project-card-meta {
+  font-size: 0.75rem;
+  color: var(--aisapp-text-dim);
+  margin-top: 6px;
+}
+
+.aisapp-badge {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: var(--aisapp-accent);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.aisapp-empty-state {
+  color: var(--aisapp-text-dim);
+  text-align: center;
+  padding: 32px 16px;
+  font-size: 0.9rem;
+}
+
+.aisapp-loading-state {
+  color: var(--aisapp-text-dim);
+  text-align: center;
+  padding: 32px 16px;
+  font-size: 0.9rem;
+  opacity: 0.6;
+}
+
+.aisapp-error-state {
+  text-align: center;
+  padding: 24px 16px;
+  border: 1px solid var(--aisapp-danger);
+  background: var(--aisapp-danger-dim);
+  border-radius: var(--aisapp-radius);
+}
+
+.aisapp-error-state p {
+  color: var(--aisapp-danger);
+  font-size: 0.9rem;
+  margin: 0 0 12px;
+}
+
+/* ---- Status toast ---- */
+
+.aisapp-status {
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  margin-bottom: 12px;
+}
+
+.aisapp-status--info {
+  background: var(--aisapp-surface-raised);
+  color: var(--aisapp-text-dim);
+}
+
+.aisapp-status--error {
+  background: var(--aisapp-danger-dim);
+  color: var(--aisapp-danger);
+}
+
+.aisapp-status-link {
+  display: inline-block;
+  margin-left: 8px;
+  color: var(--aisapp-accent);
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+/* ---- Modals (token reveal + destructive confirm + create) ---- */
+
+.aisapp-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.aisapp-modal {
+  background: var(--aisapp-surface);
+  border: 1px solid var(--aisapp-border);
+  border-radius: 14px;
+  padding: 20px;
+  max-width: 420px;
+  width: 100%;
+}
+
+.aisapp-modal h2 {
+  margin: 0 0 10px;
+  font-size: 1.1rem;
+  color: var(--aisapp-text);
+}
+
+.aisapp-modal p {
+  margin: 0 0 14px;
+  font-size: 0.9rem;
+  color: var(--aisapp-text-dim);
+  line-height: 1.4;
+}
+
+.aisapp-modal-warning {
+  color: var(--aisapp-danger) !important;
+}
+
+.aisapp-token-display {
+  display: block;
+  background: var(--aisapp-surface-raised);
+  border: 1px solid var(--aisapp-border);
+  border-radius: 8px;
+  padding: 12px;
+  font-family: 'SF Mono', 'Roboto Mono', monospace;
+  font-size: 0.85rem;
+  color: var(--aisapp-success);
+  word-break: break-all;
+  margin-bottom: 14px;
+  user-select: all;
+}
+
+.aisapp-token-display:focus {
+  outline: 2px solid var(--aisapp-accent);
+}
+
+.aisapp-modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* -- Create modal specifics (#15) -- */
+/* The create modal gets a header row with the title and a close
+   button side-by-side, and slightly more padding to breathe. */
+
+.aisapp-create-modal {
+  padding: 0;
+  overflow: hidden;
+}
+
+.aisapp-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--aisapp-border);
+}
+
+.aisapp-modal-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.aisapp-modal-close {
+  background: transparent;
+  border: none;
+  color: var(--aisapp-text-dim);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.aisapp-modal-close:hover {
+  color: var(--aisapp-text);
+}
+
+.aisapp-create-modal .aisapp-status {
+  margin: 12px 20px 0;
+}
+
+.aisapp-create-modal .aisapp-create-form {
+  padding: 16px 20px 20px;
+}
+
+@media (max-width: 480px) {
+  .aisapp-modal-actions {
+    flex-direction: column-reverse;
+  }
+  .aisapp-modal-actions .aisapp-btn {
+    width: 100%;
+  }
+
+  /* On small screens slide the create modal up from the bottom like a
+     sheet, matching how native mobile creation flows work. */
+  .aisapp-modal-overlay:has(.aisapp-create-modal) {
+    align-items: flex-end;
+    padding: 0;
+  }
+  .aisapp-create-modal {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    max-width: 100%;
+    width: 100%;
+  }
+}
+
+/* ---- Icon row helper (shared with icons.js output) ---- */
+
+.aisapp-icon-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
