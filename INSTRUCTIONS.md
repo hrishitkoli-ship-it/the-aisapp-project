@@ -1113,6 +1113,28 @@ that have caused silent regressions in this repo before, per KFS #7/
 Nothing found broken. Recording that this was actually checked (not
 skipped as "probably fine") is itself the point, per Rule 6.
 
+**Follow-up (same session, standing Rule 6 duty): #16's ToS-gate 403 made
+actionable inside the FAB create modal, not just readable.** Pulled
+latest and found Session 4 had shipped the create-project ToS gate
+(`a8fe764`) on top of this lane's own `5a29249` — confirmed no collision
+at the `api()` retry layer (403 never has `body.deviceSecret`, so it
+can't be mistaken for the 401 device-secret flow), but the modal itself
+only surfaced the backend's message as plain status text. The message
+text does tell the person what to do (\"...on the Settings page...\"),
+but nothing in the modal actually gets them there — a real, if minor,
+dead end for anyone hitting this on their very first project creation.
+
+Fixed: `buildCreateFormEl`'s `showErr` callback now receives the caught
+`err` object (not just `message`/`kind`), and the create-modal's own
+handler checks `err.body.requiresTosAcceptance` — keyed off the response
+flag, not the message string, so it won't silently break if the wording
+changes — and appends a `#/settings` link to the status toast when
+present. Link closes the modal on click (same as the existing X button)
+so navigating to Settings doesn't leave a stale overlay behind.
+Code-reviewed only (`node --check` clean, brace-balance checked); live
+verification blocked by the same no-`aisapp.vercel.app`-egress
+constraint as every other entry in this lane.
+
 ### Session 2 — Session Roster + Instructions pages
 **Status: shipped.** `frontend/js/roster.js`, `frontend/js/instructions.js`,
 `frontend/js/activity.js` (shared component), `frontend/css/instructions-roster.css`.

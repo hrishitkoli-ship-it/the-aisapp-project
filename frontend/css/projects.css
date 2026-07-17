@@ -344,6 +344,14 @@
   color: var(--aisapp-danger);
 }
 
+.aisapp-status-link {
+  display: inline-block;
+  margin-left: 8px;
+  color: var(--aisapp-accent);
+  font-weight: 600;
+  text-decoration: underline;
+}
+
 /* ---- Modals (token reveal + destructive confirm + create) ---- */
 
 .aisapp-modal-overlay {

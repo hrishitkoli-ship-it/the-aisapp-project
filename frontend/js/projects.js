@@ -440,7 +440,7 @@
   // Separated from the modal shell so the same form logic is
   // reusable -- previously the form was mounted inline on the page,
   // now it lives inside a modal opened via the FAB (#15). The caller
-  // supplies onCreated(project) and showErr(msg, kind) so error
+  // supplies onCreated(project) and showErr(msg, kind, err) so error
   // display works whether the form is inside a modal or anywhere else.
   // -------------------------------------------------------------
 
@@ -480,7 +480,7 @@
         descInput.value = '';
         onCreated(project);
       } catch (err) {
-        showErr(err.message, 'error');
+        showErr(err.message, 'error', err);
       } finally {
         isSubmitting = false;
         submitBtn.disabled = false;
@@ -797,7 +797,34 @@
             showTokenModal({ token: project.token, projectName: project.name, isRegeneration: false });
             refresh();
           },
-          (msg, kind) => showStatus(statusArea, msg, kind)
+          (msg, kind, err) => {
+            // #16 (ToS gate) can reject creation with a 403 the backend
+            // already phrases as human-readable ("Accept the Terms...on
+            // the Settings page..."), but as plain status text it's a
+            // dead end -- the person still has to find Settings
+            // themselves via the tab bar. Since this modal owns its own
+            // error surface, add a direct link for this one known case
+            // rather than leaving it as read-only text. Keyed off the
+            // response body flag (not the message string) so it doesn't
+            // silently break if the wording changes.
+            showStatus(statusArea, msg, kind);
+            if (err && err.body && err.body.requiresTosAcceptance) {
+              const statusEl = statusArea.querySelector('.aisapp-status');
+              if (statusEl) {
+                statusEl.appendChild(
+                  h(
+                    'a',
+                    {
+                      href: '#/settings',
+                      class: 'aisapp-status-link',
+                      onclick: close,
+                    },
+                    'Go to Settings'
+                  )
+                );
+              }
+            }
+          }
         );
 
         const closeBtn = h('button', {
