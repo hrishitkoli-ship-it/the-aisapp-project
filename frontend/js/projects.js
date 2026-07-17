@@ -205,11 +205,11 @@
   // one later; this degrades gracefully if so, see init()).
   // -------------------------------------------------------------
 
-  function showStatus(mountEl, message, kind = 'info') {
-    const existing = mountEl.querySelector('.aisapp-status');
+  function showStatus(container, message, kind = 'info') {
+    const existing = container.querySelector('.aisapp-status');
     if (existing) existing.remove();
     const el = h('div', { class: `aisapp-status aisapp-status--${kind}` }, message);
-    mountEl.prepend(el);
+    container.prepend(el);
     if (kind !== 'error') {
       setTimeout(() => el.remove(), 4000);
     }
@@ -435,10 +435,16 @@
   }
 
   // -------------------------------------------------------------
-  // Create-project form
+  // Create-project form element builder
+  //
+  // Separated from the modal shell so the same form logic is
+  // reusable -- previously the form was mounted inline on the page,
+  // now it lives inside a modal opened via the FAB (#15). The caller
+  // supplies onCreated(project) and showErr(msg, kind) so error
+  // display works whether the form is inside a modal or anywhere else.
   // -------------------------------------------------------------
 
-  function renderCreateForm(mountEl, onCreated) {
+  function buildCreateFormEl(onCreated, showErr) {
     const nameInput = h('input', {
       type: 'text',
       placeholder: 'Project name',
@@ -455,38 +461,32 @@
     const submitBtn = h('button', { class: 'aisapp-btn aisapp-btn--primary', type: 'submit' }, 'Create project');
     let isSubmitting = false;
 
-    const form = h(
-      'form',
-      {
-        class: 'aisapp-create-form',
-        onsubmit: async (e) => {
-          e.preventDefault();
-          if (isSubmitting) return; // guards a rapid double-tap beating the disabled state to the next event
-          const name = nameInput.value.trim();
-          if (!name) {
-            nameInput.focus();
-            return;
-          }
-          isSubmitting = true;
-          submitBtn.disabled = true;
-          submitBtn.textContent = 'Creating…';
-          try {
-            const project = await createProject(name, descInput.value.trim());
-            nameInput.value = '';
-            descInput.value = '';
-            showTokenModal({ token: project.token, projectName: project.name, isRegeneration: false });
-            onCreated(project);
-          } catch (err) {
-            showStatus(mountEl, err.message, 'error');
-          } finally {
-            isSubmitting = false;
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'Create project';
-          }
-        },
-      },
-      [nameInput, descInput, submitBtn]
-    );
+    const form = h('form', { class: 'aisapp-create-form' }, [nameInput, descInput, submitBtn]);
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (isSubmitting) return; // guards a rapid double-tap beating the disabled state
+      const name = nameInput.value.trim();
+      if (!name) {
+        nameInput.focus();
+        return;
+      }
+      isSubmitting = true;
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Creating…';
+      try {
+        const project = await createProject(name, descInput.value.trim());
+        nameInput.value = '';
+        descInput.value = '';
+        onCreated(project);
+      } catch (err) {
+        showErr(err.message, 'error');
+      } finally {
+        isSubmitting = false;
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Create project';
+      }
+    });
 
     return form;
   }
@@ -543,37 +543,15 @@
     return h('div', { class: 'aisapp-project-row' }, [selectBtn, regenBtn, deleteBtn]);
   }
 
-  async function renderProjectList(mountEl, listEl, currentId, callbacks) {
-    clear(listEl);
-    listEl.appendChild(h('p', { class: 'aisapp-loading-state' }, 'Loading projects…'));
-
-    let projects;
-    try {
-      projects = await listProjects();
-    } catch (err) {
-      clear(listEl);
-      const retryBtn = h(
-        'button',
-        {
-          class: 'aisapp-btn aisapp-btn--subtle',
-          onclick: () => renderProjectList(mountEl, listEl, currentId, callbacks),
-        },
-        'Try again'
-      );
-      listEl.appendChild(
-        h('div', { class: 'aisapp-error-state' }, [
-          h('p', {}, `Couldn't load projects: ${err.message}`),
-          retryBtn,
-        ])
-      );
-      return;
-    }
-
+  // Renders a pre-fetched list of projects into listEl. Distinct from
+  // the fetch step so search filtering can re-render from allProjects
+  // without another network round-trip.
+  function renderProjectCards(listEl, projects, currentId, callbacks) {
     clear(listEl);
 
     if (projects.length === 0) {
       listEl.appendChild(
-        h('p', { class: 'aisapp-empty-state' }, 'No projects yet. Create one above to get started.')
+        h('p', { class: 'aisapp-empty-state' }, 'No projects match your search.')
       );
       return;
     }
@@ -675,57 +653,226 @@
     async init(mountEl) {
       clear(mountEl);
 
+      // All fetched projects -- kept module-level within this closure
+      // so the search filter can re-render from it without refetching.
+      let allProjects = [];
+      let searchTerm = '';
+
       const installHint = renderInstallHint(mountEl);
       if (installHint) mountEl.appendChild(installHint);
 
       mountEl.appendChild(h('h1', { class: 'aisapp-page-title' }, 'Your projects'));
 
-      const createForm = renderCreateForm(mountEl, () => refresh());
-      mountEl.appendChild(createForm);
+      // -- Search bar (#11) ------------------------------------
+      // Filters the already-fetched allProjects list client-side so
+      // typing doesn't trigger network requests. Clears alongside the
+      // rest of mountEl whenever init() is called again (e.g. project
+      // selected → back → re-mount), which is the right behavior.
+      const searchInput = h('input', {
+        type: 'search',
+        placeholder: 'Search projects…',
+        class: 'aisapp-search-input',
+        'aria-label': 'Search projects',
+      });
+      searchInput.addEventListener('input', () => {
+        searchTerm = searchInput.value.trim().toLowerCase();
+        applyFilter();
+      });
+      mountEl.appendChild(searchInput);
 
       const listEl = h('div', { class: 'aisapp-project-list' });
       mountEl.appendChild(listEl);
 
+      // -- FAB (#15) -------------------------------------------
+      // Blue circular button fixed at bottom-right, above the tab
+      // bar. Appended to mountEl rather than document.body so the
+      // router naturally cleans it up when this page unmounts (the
+      // router replaces mountEl's content on navigation). position:
+      // fixed CSS still positions relative to viewport, not mountEl,
+      // because mountEl has no transform/filter ancestor.
+      const fab = h('button', {
+        class: 'aisapp-fab',
+        'aria-label': 'Create new project',
+        title: 'Create new project',
+      });
+      fab.appendChild(window.AisappIcons.el('plus', { size: 24 }));
+      fab.addEventListener('click', () => openCreateModal());
+      mountEl.appendChild(fab);
+
+      // Shared callbacks passed to renderProjectCards -- defined here
+      // so selectProject / refresh closures resolve correctly.
       function selectProject(id) {
         setCurrentProjectId(id);
         document.dispatchEvent(new CustomEvent('projectselected', { detail: { projectId: id } }));
         // Re-render so the "Current" badge reflects the new selection
-        // immediately, rather than waiting for some unrelated action
-        // (create/regenerate/delete) to trigger the next refresh().
-        refresh();
+        // immediately, without waiting for an unrelated action.
+        renderProjectCards(listEl, applySearchFilter(), getCurrentProjectId(), callbacks);
       }
 
-      function refresh() {
-        // Returned so callers -- including init() below -- can await
-        // the first paint instead of resolving before data has loaded.
-        return renderProjectList(mountEl, listEl, getCurrentProjectId(), {
-          onSelect: selectProject,
-          onRegenerate: (project) => {
-            confirmDestructive({
-              title: `Regenerate token for "${project.name}"?`,
-              body:
-                'The current AI token stops working immediately. Any AI session still using it will get 403s until you give it the new one.',
-              confirmLabel: 'Regenerate',
-              onConfirm: async () => {
-                const updated = await regenerateToken(project.id);
-                showTokenModal({ token: updated.token, projectName: project.name, isRegeneration: true });
-              },
-            });
+      const callbacks = {
+        onSelect: selectProject,
+        onRegenerate: (project) => {
+          confirmDestructive({
+            title: `Regenerate token for "${project.name}"?`,
+            body:
+              'The current AI token stops working immediately. Any AI session still using it will get 403s until you give it the new one.',
+            confirmLabel: 'Regenerate',
+            onConfirm: async () => {
+              const updated = await regenerateToken(project.id);
+              showTokenModal({ token: updated.token, projectName: project.name, isRegeneration: true });
+            },
+          });
+        },
+        onDelete: (project) => {
+          confirmDestructive({
+            title: `Delete "${project.name}"?`,
+            body:
+              'This permanently removes the project, all its files, session history, and activity log. This cannot be undone.',
+            confirmLabel: 'Delete permanently',
+            onConfirm: async () => {
+              await deleteProject(project.id);
+              if (getCurrentProjectId() === project.id) setCurrentProjectId(null);
+              refresh();
+            },
+          });
+        },
+      };
+
+      function applySearchFilter() {
+        if (!searchTerm) return allProjects;
+        return allProjects.filter(
+          (p) =>
+            p.name.toLowerCase().includes(searchTerm) ||
+            (p.description || '').toLowerCase().includes(searchTerm)
+        );
+      }
+
+      function applyFilter() {
+        const filtered = applySearchFilter();
+        if (allProjects.length === 0) {
+          // Don't show "no match" while list is still loading or genuinely empty
+          return;
+        }
+        if (filtered.length === 0 && searchTerm) {
+          clear(listEl);
+          listEl.appendChild(
+            h('p', { class: 'aisapp-empty-state' }, `No projects match "${searchInput.value.trim()}".`)
+          );
+        } else {
+          renderProjectCards(listEl, filtered, getCurrentProjectId(), callbacks);
+        }
+      }
+
+      // -- Create-project modal (#15) --------------------------
+      // Opens a modal sheet with the create form. The inline form
+      // that used to live directly on the page is gone; all creation
+      // now goes through this path, opened via the FAB above.
+      function openCreateModal() {
+        // Guard: don't stack modals (same guard as confirmDestructive).
+        if (document.querySelector('.aisapp-modal-overlay')) return;
+
+        const overlay = h('div', { class: 'aisapp-modal-overlay' });
+        let releaseFocusTrap = () => {};
+
+        function close() {
+          document.removeEventListener('keydown', onEsc);
+          releaseFocusTrap();
+          overlay.remove();
+        }
+
+        function onEsc(e) {
+          if (e.key === 'Escape') close();
+        }
+
+        // Status area inside the modal -- errors surface here rather
+        // than on the main page behind the overlay.
+        const statusArea = h('div', {});
+
+        const form = buildCreateFormEl(
+          (project) => {
+            // Success: close create modal first, then show the one-time
+            // token -- the two modals can't coexist safely (focus trap,
+            // z-index, scroll-lock) so we sequence them.
+            close();
+            showTokenModal({ token: project.token, projectName: project.name, isRegeneration: false });
+            refresh();
           },
-          onDelete: (project) => {
-            confirmDestructive({
-              title: `Delete "${project.name}"?`,
-              body:
-                'This permanently removes the project, all its files, session history, and activity log. This cannot be undone.',
-              confirmLabel: 'Delete permanently',
-              onConfirm: async () => {
-                await deleteProject(project.id);
-                if (getCurrentProjectId() === project.id) setCurrentProjectId(null);
-                refresh();
-              },
-            });
-          },
+          (msg, kind) => showStatus(statusArea, msg, kind)
+        );
+
+        const closeBtn = h('button', {
+          class: 'aisapp-modal-close',
+          'aria-label': 'Close',
         });
+        closeBtn.appendChild(window.AisappIcons.el('x-circle', { size: 20 }));
+        closeBtn.addEventListener('click', close);
+
+        const titleId = `aisapp-create-title-${Math.random().toString(36).slice(2, 9)}`;
+        const modal = h(
+          'div',
+          {
+            class: 'aisapp-modal aisapp-create-modal',
+            role: 'dialog',
+            'aria-modal': 'true',
+            'aria-labelledby': titleId,
+          },
+          [
+            h('div', { class: 'aisapp-modal-header' }, [
+              h('h2', { id: titleId }, 'New project'),
+              closeBtn,
+            ]),
+            statusArea,
+            form,
+          ]
+        );
+
+        overlay.addEventListener('click', (e) => {
+          if (e.target === overlay) close();
+        });
+        document.addEventListener('keydown', onEsc);
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+        releaseFocusTrap = trapFocus(modal);
+        const firstInput = modal.querySelector('input');
+        if (firstInput) firstInput.focus();
+      }
+
+      // -- Data loading ----------------------------------------
+
+      async function refresh() {
+        clear(listEl);
+        listEl.appendChild(h('p', { class: 'aisapp-loading-state' }, 'Loading projects…'));
+
+        try {
+          allProjects = await listProjects();
+        } catch (err) {
+          clear(listEl);
+          const retryBtn = h(
+            'button',
+            {
+              class: 'aisapp-btn aisapp-btn--subtle',
+              onclick: () => refresh(),
+            },
+            'Try again'
+          );
+          listEl.appendChild(
+            h('div', { class: 'aisapp-error-state' }, [
+              h('p', {}, `Couldn't load projects: ${err.message}`),
+              retryBtn,
+            ])
+          );
+          return;
+        }
+
+        if (allProjects.length === 0) {
+          clear(listEl);
+          listEl.appendChild(
+            h('p', { class: 'aisapp-empty-state' }, 'No projects yet. Tap \u002B to create one.')
+          );
+          return;
+        }
+
+        applyFilter();
       }
 
       return refresh();
