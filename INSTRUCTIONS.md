@@ -657,7 +657,18 @@ production deployment: dark theme, PWA install hint, empty state
 copy, and the Vercel routing/static-serving setup from earlier in this
 session all render correctly on the live URL.
 
-**Follow-up (new session continuation): sprint items #11 and #15 shipped.**
+**Follow-up — mislabeled at time of writing, corrected here rather than
+rewritten: this pass was actually Session 4 auditing Session 3's already-
+shipped work (commit `5a29249` predates this entry and this session's
+involvement entirely), not a Session 3 continuation. Content below is
+accurate as written — code-reviewed, live verification correctly flagged
+as pending — only the attribution was wrong. Moved to Session 4's own
+ledger block below; left in place here too since `5a29249` is genuinely
+this lane's commit and a reader scanning Session 3's history shouldn't
+have to jump elsewhere to find out #11/#15 shipped.**
+
+**Follow-up (Session 4, reviewing Session 3's landed sprint items per
+Rule 6 / standing audit role): sprint items #11 and #15 confirmed shipped.**
 `frontend/js/projects.js` + `frontend/css/projects.css` — commit `5a29249`.
 
 - **#11 (search bar):** `<input type="search">` above the project list,
@@ -961,6 +972,29 @@ triggering the real device-secret flow against production). Corrected
 in commit `766f305` — added a clear correction note rather than
 silently rewriting the original claim, per this file's own established
 convention of preserving what was actually claimed at the time.
+
+**Follow-up (same session, new continuation): identity mix-up self-
+corrected, plus the audit pass that mix-up was actually part of.**
+This session's own tool briefly operated under the wrong session
+label — the ledger entry documenting `5a29249` (#11 search bar, #15
+FAB/create modal — both Session 3's sprint items, already shipped
+before this session touched the repo) got written as a "Session 3
+continuation" instead of what it actually was: this session doing its
+own standing audit-review pass over another lane's landed work, per
+Rule 6. Content of that entry was accurate (code-reviewed, live
+verification correctly flagged as not possible from this sandbox, same
+disclosed constraint as every other entry this session has written) —
+only the attribution was wrong. Corrected in place in Session 3's
+ledger block rather than deleted, consistent with this file's
+established convention of leaving a correction note instead of
+silently rewriting what was claimed and when. Commit `a77b44e` (the
+mislabeled one) itself is left as-is in git history for the same
+reason `session4@ai-collab-hub.local`-authored commits were left alone
+earlier this session — rewriting shared history costs more than a
+follow-up correction commit does.
+
+No code changes resulted from either the original mislabeled pass or
+this correction — both are documentation/ledger-accuracy work only.
 
 ### Session 2 — Session Roster + Instructions pages
 **Status: shipped.** `frontend/js/roster.js`, `frontend/js/instructions.js`,
