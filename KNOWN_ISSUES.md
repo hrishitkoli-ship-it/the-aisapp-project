@@ -109,3 +109,105 @@ a 5th occurrence.
 (create, regenerate-token, delete) in `routes/projects.js`. Verified: 20
 requests succeed, then `429`s begin as configured; read routes unaffected.
 — Session 4
+
+---
+
+### 3rd occurrence of KFS #3: files.js's ToS check sat outside its handler's try/catch (FIXED) — crashed the whole process, not just a hang
+
+Found during a general Session 3 bug-hunt (human asked to "find and
+improve more bugs"), not while chasing a specific reported symptom --
+the same way the tokenHash leak above was found while testing something
+unrelated.
+
+#### Symptom
+
+`routes/files.js`'s `handleWriteFile` -- the handler behind every single
+file write in the app, human or AI -- had this shape:
+
+```js
+async function handleWriteFile(req, res) {
+  ...
+  const accepted = await store.hasAcceptedTos(req.project.deviceCode);  // <-- unguarded
+  if (!accepted) { return res.status(403)...; }
+
+  const actorLabel = ...;
+
+  try {
+    const result = await writeFileContent(...);
+    ...
+  } catch (err) { ... }
+}
+```
+
+The ToS-gate check runs an `await store.*` call -- a real network round
+trip to Turso -- entirely outside the handler's own try/catch. Confirmed
+live (well, against a real local Express server + a deliberately-throwing
+mock of `store.hasAcceptedTos`, since this sandbox still can't reach
+`*.turso.io` -- same disclosed limitation as every other entry in this
+file): when that call throws, it's worse than a hang. It's an uncaught
+promise rejection with no `next()` anywhere to catch it, and confirmed
+directly that this **terminates the entire Node process** --
+
+```
+Error: simulated transient Turso failure
+    at Object.hasAcceptedTos (.../store.js:37:15)
+    at handleWriteFile (backend/routes/files.js:96:32)
+    ...
+Node.js v22.22.2
+```
+
+-- not a clean 500, not a per-request failure. One transient Turso
+hiccup on one file write kills the whole server process, taking down
+every other in-flight request on that instance too, not just the one
+that hit the bad connection.
+
+#### Cause
+
+Exactly the KFS #3 / KFS #7 combination, third time now: the ToS gate
+was added to an already-complete, already-correctly-try/catch'd handler
+(see `git log` on this file -- the try/catch predates the ToS check).
+Whoever added the check inserted it above the existing `try {` instead
+of moving the `try` up to cover it, the same "insert into a handler that
+already has error handling, but insert OUTSIDE that handling" shape KFS
+#3's other two occurrences share. Every OTHER `await store.*` call in
+this exact file (`handleReadFile`, `handleListTree`, `handleDeleteFile`,
+and every other `await` inside `handleWriteFile` itself) is correctly
+inside its handler's try block -- this was a single, localized gap, not
+a file-wide pattern, which is exactly why it's easy to miss: three of
+four handlers in the same file were already doing this right.
+
+#### Fix
+
+Moved the ToS check inside the existing try block (see `git log` on
+`routes/files.js`, same commit as this entry). No behavior change for
+either the 403 (ToS not accepted) or the 200 (success) paths --
+confirmed via a real Express server bound to a real local port, hit
+with real HTTP requests (Node 22's built-in `fetch`), mocking only
+`store.js`/`fileOps.js`/the auth middleware:
+
+- Thrown DB error: now responds `500` with the underlying error message
+  in ~60ms, instead of crashing the process.
+- `hasAcceptedTos` resolves `false`: still `403` +
+  `requiresTosAcceptance: true`, unchanged.
+- `hasAcceptedTos` resolves `true`: still `200` + `success: true` +
+  the real `version` from `writeFileContent`, unchanged.
+
+Verified the test itself was meaningful, not just passing by
+construction: re-ran it against the pre-fix code via `git stash` and
+confirmed it reproduces the exact process-crash shown above, then
+restored the fix and confirmed clean.
+
+#### Worth naming directly
+
+This is the 3rd occurrence of Known Failure Signature #3 (see
+`INSTRUCTIONS.md`), which -- per this file's own "Maintaining This
+File" policy -- means it graduates from a table row to a full
+Non-Negotiable Rule (new Rule 7). The specific lesson Rule 7 tries to
+capture: auditing a handler's try/catch coverage ONCE, when it's first
+written, isn't enough. The gap here was introduced by a *later*,
+unrelated change (the ToS gate) that had no reason to think of itself
+as "touching error handling" at all -- it was just adding a business
+rule check, and the try/catch was already sitting right there a few
+lines down, easy to assume it already covered everything above it too.
+
+Logged by Session 3.

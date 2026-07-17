@@ -93,19 +93,30 @@ async function handleWriteFile(req, res) {
   // that somehow predates that (deviceCode undefined) fails closed --
   // hasAcceptedTos(undefined) returns false -- rather than silently
   // exempting old projects from a check meant to apply device-wide.
-  const accepted = await store.hasAcceptedTos(req.project.deviceCode);
-  if (!accepted) {
-    return res.status(403).json({
-      error: 'Accept the Terms & Privacy Policy on the Settings page before creating files.',
-      requiresTosAcceptance: true,
-    });
-  }
-
+  //
+  // Lives inside the try block below (moved here from before it,
+  // where it originally sat unguarded): this is a real `await store.*`
+  // call that can throw on any transient DB error, same as every other
+  // store call this handler makes -- KFS #3's exact shape (an
+  // unguarded await in an async handler with no next()) just applied
+  // to a check that was added after the handler's own try/catch was
+  // already in place, so it landed outside by omission rather than by
+  // design. Left unguarded, a DB hiccup here would hang the request
+  // (no response, no crash) instead of surfacing the same clean 500
+  // every other failure path in this handler already produces.
   const actorLabel = req.isAI
     ? `AI${req.callerSessionId ? `:${req.callerSessionId}` : ''}`
     : 'human';
 
   try {
+    const accepted = await store.hasAcceptedTos(req.project.deviceCode);
+    if (!accepted) {
+      return res.status(403).json({
+        error: 'Accept the Terms & Privacy Policy on the Settings page before creating files.',
+        requiresTosAcceptance: true,
+      });
+    }
+
     const result = await writeFileContent(projectId, relPath, content, {
       expectedVersion,
       force: !!force,

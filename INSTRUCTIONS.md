@@ -205,6 +205,22 @@ documents the trust model and exactly what is and isn't decided yet.
    re-verified after that change landed. Verification is a snapshot, not
    a permanent guarantee — re-check after anything adjacent changes, not
    just once per feature.
+7. **An async Express route handler's `try` must cover its ENTIRE body —
+   nothing that can `await` goes before the first `try {` or after its
+   matching `}`.** Promoted from Known Failure Signature #3 to a full
+   Rule after a 3rd independent occurrence (`routes/files.js`'s
+   `handleWriteFile`, this session — see that KFS row and
+   `KNOWN_ISSUES.md` for the full writeup), matching this file's own
+   "Maintaining This File" policy that a bug class recurring a third
+   time means it needs to stop being just a table row. The files.js
+   case was specifically an `await store.*` call added to an *already-
+   complete* handler (the #16 ToS gate) that landed above the existing
+   try/catch instead of inside it — worth naming because it means
+   auditing this once, when a handler is first written, isn't enough;
+   re-check the FULL body (not just the newest addition) any time
+   something is inserted into a handler that already had its own
+   try/catch, since the easy mistake is assuming the existing block
+   already covers whatever gets added above or after it.
 
 ---
 
@@ -472,7 +488,7 @@ the same thing a third time.
 |---|---|---|---|---|
 | 1 | A route handler that calls an async `store.*` function without `await`, then responds immediately | `store.js` writes go through a lock queue that resolves on a microtask; the HTTP response can fire before the write actually lands | Every `store.*` call in a route handler must be `await`ed, and the handler must be `async` | Session 1 (project creation, pre-Turso) |
 | 2 | `req.params.projectId` (or any route param) used directly in a filesystem/DB path with no validation | Only file *paths within* a project were going through `safeResolve()` — the project identifier itself wasn't | Validate the identifier itself before using it to build any path; throw a typed error, don't silently sanitize-and-continue (silent rewriting gives zero signal that an escape was attempted) | Session 4 (`projectDir()` traversal via DELETE) |
-| 3 | An `async` Express route handler throws/rejects with no `try/catch`, and Express 4 doesn't route that to error middleware automatically | Missing `try/catch` + `next(err)` around `await` calls in a route handler | Every async handler needs its own `try/catch`, or a wrapper that catches and forwards to `next()`. Found independently **twice** — audit any new async route handler for this specifically | Session 4 (device DELETE crash), Session 3 (`routes/projects.js` create/regenerate/delete) |
+| 3 | **[3rd occurrence — promoted to Non-Negotiable Rule 7, see that section]** An `async` Express route handler throws/rejects with no `try/catch`, and Express 4 doesn't route that to error middleware automatically | Missing `try/catch` + `next(err)` around `await` calls in a route handler | Every async handler needs its own `try/catch`, or a wrapper that catches and forwards to `next()`. Found independently **three times now** — audit any new async route handler for this specifically, AND re-audit an existing handler's full body whenever something new is inserted into it | Session 4 (device DELETE crash), Session 3 (`routes/projects.js` create/regenerate/delete). **3rd occurrence, Session 3:** `routes/files.js`'s `handleWriteFile` had its `await store.hasAcceptedTos(...)` ToS check sitting BEFORE the handler's existing try/catch — added later, landed above the block instead of inside it. Confirmed via a real Express server + mocked store: on the pre-fix code, a thrown DB error didn't just hang the request, it **crashed the entire Node process** (uncaught rejection terminating the process — verified directly, not inferred). Fixed by moving the check inside the try; re-verified with the same harness (6/6 checks pass, including confirming the fixed version responds in <100ms instead of crashing). Full writeup in `KNOWN_ISSUES.md` |
 | 4 | **[RESOLVED — see correction note near top of file for live-verification evidence]** File *content* storage is implemented twice, disagreeing: `fileOps.js` was rewritten to call `store.run()` against Turso, but the live `store.js` is still the fs-JSON version with no `run()` method. **Session 4 found this same root cause (route code written against a schema that isn't the live one) is not confined to `files.js`/`fileOps.js`** — `routes/projects.js`'s own header comment describes an `aisapp_projects` Turso table with automatic `ON DELETE CASCADE` and schema-default columns that do not exist in the live JSON-file `store.js`. This is why `POST /api/projects` currently creates an index entry but never writes a real `project.json` — confirmed live, not inferred (a created project immediately 404s on every subsequent read). See row 6 below for a related, now-fixed symptom of this same mismatch | Two (or more) sessions' work landed on top of each other mid-decision, before either fully replaced the other, and the affected surface is broader than first realized | Not a pick-a-line-and-fix-it bug — a real architectural call (Turso table vs. some other approach) that Session 2 is mid-deciding. Don't touch `files.js`/`fileOps.js`/`routes/projects.js` without reading Session 3's flag in the Session Ledger first. **If you find a THIRD file exhibiting this pattern, that's the point this needs to stop being "wait for Session 2" and become an all-hands architectural decision** — see Rule 6/Maintaining This File on updating this row rather than creating a fourth near-duplicate one | Session 3, verified live (`store.run is not a function`). Scope widened by Session 4, verified live (`project.json` never written, every created project immediately unreachable). **Resolved by Session 4**: real schema (`aisapp_devices`/`aisapp_projects`/`aisapp_files`) applied directly to the live Turso database via its SQL console; human confirmed the live app went from a hard `500` to working correctly, including a successful live device-secret creation |
 | 5 | A storage write fails because the filesystem is read-only (e.g. a serverless environment), and the raw `fs` error surfaces as an opaque 500 | Vercel's deployed bundle is read-only outside `/tmp`; no distinction was made between "bug" and "expected environment limitation" | Catch the specific read-only error codes (`EROFS`/`EACCES`/`ENOENT`/`EPERM` — confirmed via a real read-only mount test, not assumed; deliberately excludes `ENOSPC` so a real full-disk problem doesn't get mislabeled) and throw a typed error the central handler turns into a clean `503` | Session 3 |
 | 6 | A route's own comments describe a Turso/SQL schema (table names, FK cascades, parameterized queries) that doesn't exist anywhere in the actual `store.js` it calls | A migration was planned/assumed complete and documented as such in code comments, before the underlying file was actually changed to match | Don't trust a file's comments about *another* file's behavior — verify by reading that other file directly. `grep` for the specific function/table names the comment claims exist | Session 3 (`routes/projects.js` header + inline comments, twice — see Session Ledger). **3rd occurrence, Session 4:** `routes/device.js`'s header claims `aisapp_devices` "can hold more than one device's identity" and that delete-cascade scoping was updated accordingly for that reason. `store.js`'s actual `getDevice()` is hardcoded single-row (`ORDER BY created_at ASC LIMIT 1`, no `WHERE` on anything device-specific) — there has only ever been one device, full stop, regardless of what the comment says motivated the delete-cascade change. Not fixed (bigger call than this session's own #16 fix warranted — see IDEAS.md). Per this row's own note below about a 3rd occurrence, flagging via IDEAS.md rather than unilaterally adding a Non-Negotiable Rule. |
@@ -1169,6 +1185,56 @@ exercises the DOM wiring code review can't (event listeners actually
 firing, modal stacking guards actually guarding, the two modals
 actually sequencing correctly rather than just reading like they
 would).
+
+**Follow-up (same session, direct human instruction: "find and improve
+more bugs"): systematic audit beyond this lane, one real bug found and
+fixed.** Cross-checked every `store.*` call across all route/middleware
+files against `store.js`'s actual `module.exports` (mechanical version
+of the check IDEAS.md already proposed) — zero live mismatches, the few
+grep hits were all comments describing removed fs-based behavior,
+already-known false-alarm shape (see KFS #6's own note on this exact
+class of false positive). Manually read every async handler in
+`device.js`, `migration.js`, `sessions.js`, `instructions.js`, and
+re-checked `projects.js` for try/catch coverage — all clean.
+
+**Found in `files.js`**: `handleWriteFile`'s ToS-gate check
+(`await store.hasAcceptedTos(...)`) sat before the handler's own
+try/catch, not inside it — 3rd occurrence of Known Failure Signature
+#3. Confirmed via a real local Express server + mocked store/fileOps
+(not this sandbox's usual `*.turso.io`-unreachable limitation, since
+this specifically tests request-handling logic, not a live DB query):
+on the pre-fix code, a thrown DB error didn't just hang the request —
+it crashed the entire Node process (confirmed by literally reproducing
+the crash via `git stash` on the fix, then restoring it). Fixed by
+moving the check inside the try block; re-verified 6/6 (thrown-error →
+clean 500 in ~60ms, false → 403 unchanged, true → 200 unchanged). Full
+writeup in `KNOWN_ISSUES.md`. Per this file's own policy (a bug class's
+3rd occurrence graduates from a table row to a binding rule), added
+**Non-Negotiable Rule 7** and updated KFS #3's row accordingly.
+
+**Also found and fixed**: `rateLimit.js`'s own header comment claimed
+`aiSurfaceLimiter` mounts in `server.js` — stale since server.js was
+rewritten into a thin wrapper earlier this session (Session 4's own
+entry above); it's actually mounted in `app.js`. Pure KFS #6 (comment
+describes code that doesn't match reality), 3rd+ occurrence of that
+pattern too — corrected in place, no functional change.
+
+**Deliberately not touched**: the read-modify-write pattern in
+`sessions.js`/`instructions.js` (`getSessions`→mutate→`saveSessions`,
+same shape for instructions) has no `expectedVersion`-style guard
+against two concurrent writers racing — a real question given this
+app's whole premise is multiple concurrent AI sessions, but Rule 5's
+optimistic-concurrency contract is explicitly scoped to file content in
+this file's own wording, and converting session/instruction writes to
+the same pattern is an architecture call, not a mechanical fix — did
+not self-approve building it. Not filed as a new IDEA this pass only
+because time went to the confirmed, concrete bug above instead; worth a
+future pass if nobody's filed it by then.
+
+Moved the corresponding `IDEAS.md` entry (the try/catch audit) from
+Open to Done, noting explicitly that direct human instruction is what
+authorized acting on it — not self-approval, consistent with that
+file's own stated rule.
 
 ### Session 2 — Session Roster + Instructions pages
 **Status: shipped.** `frontend/js/roster.js`, `frontend/js/instructions.js`,
