@@ -63,6 +63,12 @@ router.post('/', humanSensitiveLimiter, requireDeviceSecret, async (req, res, ne
     if (!name || typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ error: 'Project "name" is required.' });
     }
+    if (name.trim().length > 80) {
+      return res.status(400).json({ error: 'Project "name" must be 80 characters or fewer.' });
+    }
+    if ((description || '').trim().length > 280) {
+      return res.status(400).json({ error: 'Project "description" must be 280 characters or fewer.' });
+    }
 
     // TOS GATE (#16): acceptance required before the first project can
     // be created -- not just before the first file write, which is all
@@ -274,6 +280,17 @@ router.delete('/:projectId', humanSensitiveLimiter, requireDeviceSecret, async (
 /** Never send tokenHash to the client -- it's an internal secret. */
 function stripSecret(project) {
   const { tokenHash, ...rest } = project;
+  // #13's github integration stores an encrypted PAT nested at
+  // project.github.encryptedToken. Every existing call site of this
+  // function (list, get, regenerate-token) returns the raw project
+  // object, so the strip has to happen here too, not just in the new
+  // github route -- otherwise those three endpoints would leak the
+  // ciphertext (not plaintext, but "we never return this, full stop"
+  // is the actual policy here, same as tokenHash above).
+  if (rest.github) {
+    const { encryptedToken, ...githubSafe } = rest.github;
+    rest.github = githubSafe;
+  }
   return rest;
 }
 

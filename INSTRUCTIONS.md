@@ -205,6 +205,22 @@ documents the trust model and exactly what is and isn't decided yet.
    re-verified after that change landed. Verification is a snapshot, not
    a permanent guarantee — re-check after anything adjacent changes, not
    just once per feature.
+7. **An async Express route handler's `try` must cover its ENTIRE body —
+   nothing that can `await` goes before the first `try {` or after its
+   matching `}`.** Promoted from Known Failure Signature #3 to a full
+   Rule after a 3rd independent occurrence (`routes/files.js`'s
+   `handleWriteFile`, this session — see that KFS row and
+   `KNOWN_ISSUES.md` for the full writeup), matching this file's own
+   "Maintaining This File" policy that a bug class recurring a third
+   time means it needs to stop being just a table row. The files.js
+   case was specifically an `await store.*` call added to an *already-
+   complete* handler (the #16 ToS gate) that landed above the existing
+   try/catch instead of inside it — worth naming because it means
+   auditing this once, when a handler is first written, isn't enough;
+   re-check the FULL body (not just the newest addition) any time
+   something is inserted into a handler that already had its own
+   try/catch, since the easy mistake is assuming the existing block
+   already covers whatever gets added above or after it.
 
 ---
 
@@ -382,24 +398,51 @@ whoever commits last winning.
   defines, not a plain list.
 
 ### Session 2 (backend / data / Turso)
-- **#3** -- Profile the project/workspace fetch. Check for N+1 queries
-  against Turso, missing indexes, redundant roster/activity refetch on
-  every nav. Fix with `Promise.all` for parallel fetches + a simple
-  in-memory cache layer (no SWR/React Query -- there's no React).
-- **#6** -- "Download AI Instructions" button on the home page serving
-  a SKILL.md that teaches any AI (Claude, ChatGPT, Gemini, DeepSeek,
-  future models) this app's API/workflow. Must generate from a single
-  source-of-truth doc and stay in sync automatically -- a script run
-  during `vercel-build` (or as a pre-push check) that regenerates
-  `SKILL.md` from the actual route definitions, not hand-maintained
-  separately. Ties to this session's existing ownership of the
-  API/backend surface being documented.
-- **#12** -- "Download all files" per project -> .zip. JSZip
-  client-side is simplest given no build step; a server-side zip
-  stream is the alternative if project sizes make that impractical --
-  this session's call given they own the size-limit logic already.
-- **#13** (optional, last) -- Connect a GitHub repo per project, push
-  files directly (OAuth or PAT).
+- **#3** ✅ **SHIPPED** (`5005449`) -- Traced the actual N+1: not Turso
+  query fan-out (each `store.js` function is a single round trip, no
+  loop-based sequential queries found) but `getProject()` being
+  refetched on every single hash-nav (including tab switches within
+  the same project) just to show the header label. Fixed with a 30s
+  TTL in-memory cache keyed by project id, invalidated on
+  regenerate-token/delete. `listProjects()` fills the cache as a side
+  effect so opening the list then a project doesn't refetch. Roster/
+  activity's 15s polling deliberately left uncached -- that's live
+  coordination state, caching it would work against the app's actual
+  purpose. `Promise.all` applied where the real parallel-fetch
+  opportunity actually was: #12's per-file zip fetch, below.
+- **#6** ✅ **SHIPPED** (`5005449`) -- `scripts/generate-skill.js`
+  parses live route definitions straight out of `backend/routes/*.js`
+  (string paths and the regex-literal file-content routes both) into
+  `frontend/SKILL.md`. Wired into `npm run vercel-build` so it
+  regenerates on every deploy -- never hand-maintained, can't drift
+  from the real API surface. Download button (reuses the existing
+  header icon-button pattern) added to the home page header next to
+  Settings/theme-toggle.
+- **#12** ✅ **SHIPPED** (`5005449`) -- Zip download button in the
+  workspace toolbar. Flattens the file tree, fetches every file's
+  content in parallel via `Promise.all`, bundles client-side with
+  JSZip (CDN, matches Rule 1 -- no build step). No server-side zip
+  stream needed at current project sizes. Flagging for Session 4 per
+  the standing review note above: worth a pass confirming the zip
+  can't be used to pull file content a token shouldn't have access to
+  (it reuses the same per-file read route as everything else, so this
+  should already be bounded by existing auth, but hasn't been
+  adversarially checked).
+- **#13** ✅ **SHIPPED** (`591470a`) -- PAT-only, not OAuth (needs an
+  external GitHub App registration this environment can't do --
+  scoped down explicitly, not silently skipped; see the route file's
+  header for the full reasoning). Git Data API for one atomic commit
+  per push. Known, documented, unfixed limitation: can't decrypt
+  files written with the optional per-agent content encryption before
+  pushing (server never holds that key by design -- confirmed by
+  reading, not assumed). Untestable end-to-end from this sandbox: no
+  local-mode Turso client available, and testing against the human's
+  real PAT/repo without being asked would mean writing real commits
+  they didn't request. Verified everything that could be verified
+  without those: crypto round-trip + tamper detection + missing-key
+  error, request-shaping against the live GitHub API (invalid-token
+  401, unauthenticated public-repo 200), tree-flattening logic,
+  token-never-leaks in every response shape.
 
 ### Session 4 (security / hardening / compliance + review)
 - **#16** ✅ **SHIPPED** -- Terms & Privacy acceptance now genuinely
@@ -472,7 +515,7 @@ the same thing a third time.
 |---|---|---|---|---|
 | 1 | A route handler that calls an async `store.*` function without `await`, then responds immediately | `store.js` writes go through a lock queue that resolves on a microtask; the HTTP response can fire before the write actually lands | Every `store.*` call in a route handler must be `await`ed, and the handler must be `async` | Session 1 (project creation, pre-Turso) |
 | 2 | `req.params.projectId` (or any route param) used directly in a filesystem/DB path with no validation | Only file *paths within* a project were going through `safeResolve()` — the project identifier itself wasn't | Validate the identifier itself before using it to build any path; throw a typed error, don't silently sanitize-and-continue (silent rewriting gives zero signal that an escape was attempted) | Session 4 (`projectDir()` traversal via DELETE) |
-| 3 | An `async` Express route handler throws/rejects with no `try/catch`, and Express 4 doesn't route that to error middleware automatically | Missing `try/catch` + `next(err)` around `await` calls in a route handler | Every async handler needs its own `try/catch`, or a wrapper that catches and forwards to `next()`. Found independently **twice** — audit any new async route handler for this specifically | Session 4 (device DELETE crash), Session 3 (`routes/projects.js` create/regenerate/delete) |
+| 3 | **[3rd occurrence — promoted to Non-Negotiable Rule 7, see that section]** An `async` Express route handler throws/rejects with no `try/catch`, and Express 4 doesn't route that to error middleware automatically | Missing `try/catch` + `next(err)` around `await` calls in a route handler | Every async handler needs its own `try/catch`, or a wrapper that catches and forwards to `next()`. Found independently **three times now** — audit any new async route handler for this specifically, AND re-audit an existing handler's full body whenever something new is inserted into it | Session 4 (device DELETE crash), Session 3 (`routes/projects.js` create/regenerate/delete). **3rd occurrence, Session 3:** `routes/files.js`'s `handleWriteFile` had its `await store.hasAcceptedTos(...)` ToS check sitting BEFORE the handler's existing try/catch — added later, landed above the block instead of inside it. Confirmed via a real Express server + mocked store: on the pre-fix code, a thrown DB error didn't just hang the request, it **crashed the entire Node process** (uncaught rejection terminating the process — verified directly, not inferred). Fixed by moving the check inside the try; re-verified with the same harness (6/6 checks pass, including confirming the fixed version responds in <100ms instead of crashing). Full writeup in `KNOWN_ISSUES.md` |
 | 4 | **[RESOLVED — see correction note near top of file for live-verification evidence]** File *content* storage is implemented twice, disagreeing: `fileOps.js` was rewritten to call `store.run()` against Turso, but the live `store.js` is still the fs-JSON version with no `run()` method. **Session 4 found this same root cause (route code written against a schema that isn't the live one) is not confined to `files.js`/`fileOps.js`** — `routes/projects.js`'s own header comment describes an `aisapp_projects` Turso table with automatic `ON DELETE CASCADE` and schema-default columns that do not exist in the live JSON-file `store.js`. This is why `POST /api/projects` currently creates an index entry but never writes a real `project.json` — confirmed live, not inferred (a created project immediately 404s on every subsequent read). See row 6 below for a related, now-fixed symptom of this same mismatch | Two (or more) sessions' work landed on top of each other mid-decision, before either fully replaced the other, and the affected surface is broader than first realized | Not a pick-a-line-and-fix-it bug — a real architectural call (Turso table vs. some other approach) that Session 2 is mid-deciding. Don't touch `files.js`/`fileOps.js`/`routes/projects.js` without reading Session 3's flag in the Session Ledger first. **If you find a THIRD file exhibiting this pattern, that's the point this needs to stop being "wait for Session 2" and become an all-hands architectural decision** — see Rule 6/Maintaining This File on updating this row rather than creating a fourth near-duplicate one | Session 3, verified live (`store.run is not a function`). Scope widened by Session 4, verified live (`project.json` never written, every created project immediately unreachable). **Resolved by Session 4**: real schema (`aisapp_devices`/`aisapp_projects`/`aisapp_files`) applied directly to the live Turso database via its SQL console; human confirmed the live app went from a hard `500` to working correctly, including a successful live device-secret creation |
 | 5 | A storage write fails because the filesystem is read-only (e.g. a serverless environment), and the raw `fs` error surfaces as an opaque 500 | Vercel's deployed bundle is read-only outside `/tmp`; no distinction was made between "bug" and "expected environment limitation" | Catch the specific read-only error codes (`EROFS`/`EACCES`/`ENOENT`/`EPERM` — confirmed via a real read-only mount test, not assumed; deliberately excludes `ENOSPC` so a real full-disk problem doesn't get mislabeled) and throw a typed error the central handler turns into a clean `503` | Session 3 |
 | 6 | A route's own comments describe a Turso/SQL schema (table names, FK cascades, parameterized queries) that doesn't exist anywhere in the actual `store.js` it calls | A migration was planned/assumed complete and documented as such in code comments, before the underlying file was actually changed to match | Don't trust a file's comments about *another* file's behavior — verify by reading that other file directly. `grep` for the specific function/table names the comment claims exist | Session 3 (`routes/projects.js` header + inline comments, twice — see Session Ledger). **3rd occurrence, Session 4:** `routes/device.js`'s header claims `aisapp_devices` "can hold more than one device's identity" and that delete-cascade scoping was updated accordingly for that reason. `store.js`'s actual `getDevice()` is hardcoded single-row (`ORDER BY created_at ASC LIMIT 1`, no `WHERE` on anything device-specific) — there has only ever been one device, full stop, regardless of what the comment says motivated the delete-cascade change. Not fixed (bigger call than this session's own #16 fix warranted — see IDEAS.md). Per this row's own note below about a 3rd occurrence, flagging via IDEAS.md rather than unilaterally adding a Non-Negotiable Rule. |
@@ -1113,6 +1156,232 @@ that have caused silent regressions in this repo before, per KFS #7/
 Nothing found broken. Recording that this was actually checked (not
 skipped as "probably fine") is itself the point, per Rule 6.
 
+**Follow-up (same session, standing Rule 6 duty): #16's ToS-gate 403 made
+actionable inside the FAB create modal, not just readable.** Pulled
+latest and found Session 4 had shipped the create-project ToS gate
+(`a8fe764`) on top of this lane's own `5a29249` — confirmed no collision
+at the `api()` retry layer (403 never has `body.deviceSecret`, so it
+can't be mistaken for the 401 device-secret flow), but the modal itself
+only surfaced the backend's message as plain status text. The message
+text does tell the person what to do (\"...on the Settings page...\"),
+but nothing in the modal actually gets them there — a real, if minor,
+dead end for anyone hitting this on their very first project creation.
+
+Fixed: `buildCreateFormEl`'s `showErr` callback now receives the caught
+`err` object (not just `message`/`kind`), and the create-modal's own
+handler checks `err.body.requiresTosAcceptance` — keyed off the response
+flag, not the message string, so it won't silently break if the wording
+changes — and appends a `#/settings` link to the status toast when
+present. Link closes the modal on click (same as the existing X button)
+so navigating to Settings doesn't leave a stale overlay behind.
+Code-reviewed only (`node --check` clean, brace-balance checked); live
+verification blocked by the same no-`aisapp.vercel.app`-egress
+constraint as every other entry in this lane.
+
+**Follow-up (same session): upgraded from code-review-only to a real
+mocked-fetch jsdom run** — same technique an earlier pass in this lane
+used to verify the device-secret retry flow (see that entry above),
+applied here to cover #11, #15, and this entry's own #16 fix together
+in one harness (not committed to the repo — dev-only, `npm install
+jsdom --no-save` in an isolated scratch dir, same "never a runtime
+dependency" convention Session 4 used for `@tursodatabase/database`).
+Loads the real `icons.js` + `projects.js` into a jsdom window, mocks
+`fetch` to match `routes/projects.js`'s actual documented contract
+(200 list, 201 create, 403 `requiresTosAcceptance` before "accepting"
+ToS in the mock, 201 after), drives real DOM events (`input`,
+`submit`, `click`, `Escape` keydown) — 19/19 checks passed:
+- Search filters by name and by description independently; empty
+  search restores the full list; no-match empty state text includes
+  the actual typed term.
+- FAB opens exactly one overlay; a second click while open does not
+  stack a second one (guard confirmed, not just read as present);
+  Escape closes the unfilled create modal.
+- The 403 path renders the Settings link with the correct `#/settings`
+  href, alongside the backend's own message text (not replacing it);
+  clicking the link closes the modal.
+- Once "accepted," the same form submission succeeds: modal closes,
+  token-reveal modal shows the exact token from the mocked response,
+  and exactly 2 create attempts were made total (1 rejected + 1
+  succeeded) — confirming the rejected attempt didn't silently double-
+  submit or leave the form in a bad state for the retry.
+
+Still not a live request against the real deployed server/database —
+that gap is explicitly named, not papered over — but this is a real
+step up from "read the code and it looked right," and specifically
+exercises the DOM wiring code review can't (event listeners actually
+firing, modal stacking guards actually guarding, the two modals
+actually sequencing correctly rather than just reading like they
+would).
+
+**Follow-up (same session, direct human instruction: "find and improve
+more bugs"): systematic audit beyond this lane, one real bug found and
+fixed.** Cross-checked every `store.*` call across all route/middleware
+files against `store.js`'s actual `module.exports` (mechanical version
+of the check IDEAS.md already proposed) — zero live mismatches, the few
+grep hits were all comments describing removed fs-based behavior,
+already-known false-alarm shape (see KFS #6's own note on this exact
+class of false positive). Manually read every async handler in
+`device.js`, `migration.js`, `sessions.js`, `instructions.js`, and
+re-checked `projects.js` for try/catch coverage — all clean.
+
+**Found in `files.js`**: `handleWriteFile`'s ToS-gate check
+(`await store.hasAcceptedTos(...)`) sat before the handler's own
+try/catch, not inside it — 3rd occurrence of Known Failure Signature
+#3. Confirmed via a real local Express server + mocked store/fileOps
+(not this sandbox's usual `*.turso.io`-unreachable limitation, since
+this specifically tests request-handling logic, not a live DB query):
+on the pre-fix code, a thrown DB error didn't just hang the request —
+it crashed the entire Node process (confirmed by literally reproducing
+the crash via `git stash` on the fix, then restoring it). Fixed by
+moving the check inside the try block; re-verified 6/6 (thrown-error →
+clean 500 in ~60ms, false → 403 unchanged, true → 200 unchanged). Full
+writeup in `KNOWN_ISSUES.md`. Per this file's own policy (a bug class's
+3rd occurrence graduates from a table row to a binding rule), added
+**Non-Negotiable Rule 7** and updated KFS #3's row accordingly.
+
+**Also found and fixed**: `rateLimit.js`'s own header comment claimed
+`aiSurfaceLimiter` mounts in `server.js` — stale since server.js was
+rewritten into a thin wrapper earlier this session (Session 4's own
+entry above); it's actually mounted in `app.js`. Pure KFS #6 (comment
+describes code that doesn't match reality), 3rd+ occurrence of that
+pattern too — corrected in place, no functional change.
+
+**Deliberately not touched**: the read-modify-write pattern in
+`sessions.js`/`instructions.js` (`getSessions`→mutate→`saveSessions`,
+same shape for instructions) has no `expectedVersion`-style guard
+against two concurrent writers racing — a real question given this
+app's whole premise is multiple concurrent AI sessions, but Rule 5's
+optimistic-concurrency contract is explicitly scoped to file content in
+this file's own wording, and converting session/instruction writes to
+the same pattern is an architecture call, not a mechanical fix — did
+not self-approve building it. Not filed as a new IDEA this pass only
+because time went to the confirmed, concrete bug above instead; worth a
+future pass if nobody's filed it by then.
+
+Moved the corresponding `IDEAS.md` entry (the try/catch audit) from
+Open to Done, noting explicitly that direct human instruction is what
+authorized acting on it — not self-approval, consistent with that
+file's own stated rule.
+
+**Follow-up (same session): main was force-pushed by a separate tool
+("Replit Agent") to a disconnected 6-commit history — discovered while
+investigating "no visible updates on the website," reconciled per
+direct human decision (hybrid: keep Replit's genuine improvements,
+restore the docs, fix deployment).**
+
+`git push` was rejected with a real divergence, not a normal
+fetch-first race: `git merge-base HEAD origin/main` returned nothing —
+Replit's 6 commits share zero ancestry with this repo's 150 commits.
+Root commit `8e0fa4b "Initial commit"` (author "Replit Agent") had
+author-date 2026-07-13, several days before the force-push itself
+(GitHub's events API shows no pushes from that date — the author-date
+almost certainly reflects Replit's own workspace-creation timestamp,
+not when this specific commit was made or pushed). **Nothing was
+force-pushed by this session before confirming with the human** — full
+findings reported, human chose the reconciliation path, only then
+executed.
+
+**Backed up first:** Replit's pre-merge state pushed to a new branch,
+`replit-agent-snapshot`, before touching `main` at all — so this
+merge is reversible even after the force-push below.
+
+**What Replit's tree actually was, on inspection (not just commit
+messages):** not a from-scratch rebuild. It wrapped the real app,
+substantially intact, inside `artifacts/api-server/` as one piece of
+a pnpm-workspace monorepo (Replit's own project convention), alongside
+a `mockup-sandbox` (unrelated shadcn/ui + Vite scaffold), several
+`lib/api-*` packages (OpenAPI/zod/drizzle codegen scaffolding, never
+wired to the real app), and a parallel `src/*.ts` + `build.mjs`
+Express+esbuild starter template — also never wired in (the real app's
+own `package.json` `dev`/`start` scripts still point at
+`backend/server.js`, confirmed by reading them, not assumed). All of
+the above: **discarded**, not merged — inert boilerplate, and the
+TS/esbuild pieces would have directly violated this file's own
+Non-Negotiable Rule #1 (no build step) if adopted.
+
+**What was genuinely better in Replit's copy of the real app — found
+via a full file-by-file diff, not a guess, and adopted:**
+- `backend/routes/files.js`: all four shared handlers now take `next`
+  and route errors through it instead of hardcoding `res.status(500)`
+  — lets `app.js`'s central handler correctly translate
+  `InvalidProjectIdError`→400, size-limit errors→413, instead of
+  everything collapsing to a generic 500. Also converted
+  `logSecurityAlert` calls inside `catch` blocks from bare `await` to
+  `.catch(() => {})` — a bare await there means a *second* DB error
+  (while logging the first) throws again, uncaught, inside a catch
+  block, which doesn't get a second chance to be caught — same KFS #3
+  shape, one level deeper, that this session's own audit missed.
+- `backend/routes/sessions.js`: new human-only `DELETE /:sessionId`
+  (dismiss a stale session from the roster — required backend
+  half of the frontend's "dismiss stale sessions" feature, see
+  below), plus length/enum validation on session status, request
+  priority, and request status fields.
+- `backend/routes/instructions.js` / `projects.js`: name/description
+  length limits; `instructions.js` additionally verifies the target
+  `sessionId` exists before creating an assignment, preventing a
+  dangling record.
+- `backend/db/store.js`: `TURSO_DATABASE_URL` now has `libsql://`
+  converted to `https://` and stray quote characters stripped before
+  connecting — handles a real copy-paste failure mode, wasn't handled
+  before.
+- `backend/app.js`: **a genuine bug in this lane's own prior work** —
+  the CSP `script-src` hash for `index.html`'s inline service-worker
+  script didn't match the script's actual content (verified by
+  recomputing the SHA-256 directly: the file content is byte-identical
+  between both trees, only the hash differs, and only Replit's hash
+  matches what the content actually hashes to). Under a real CSP-
+  enforcing browser this would have silently blocked service-worker
+  registration — found only because this merge required a line-by-line
+  diff of a file that otherwise looked untouched.
+- `frontend/js/pages/settings.js`: **another real bug** — its `api()`
+  fetch wrapper never attached the `X-Device-Secret` header at all,
+  meaning any device-secret-gated endpoint (ToS acceptance itself,
+  the exact thing Settings exists for) would have 401'd. Fixed by
+  reading the same localStorage key `projects.js` writes.
+- `frontend/js/pages/workspace.js` (684→785 lines) — the actual "QoL"
+  work: autosave, word-wrap toggle, dirty-state badge, Ln/Col bar,
+  ⌘S hint, copy-path, Escape handling, tab→spaces.
+- `frontend/js/activity.js` / `roster.js` + supporting CSS: live
+  self-updating timestamps, an activity-type filter, and a dismiss
+  button on stale roster cards wired to the new `DELETE` route above.
+- `frontend/js/projects.js`: on top of this session's own FAB/search/
+  ToS-link work (confirmed present, byte-for-byte, in Replit's copy —
+  not lost, not reconstructed from memory), two additions: the
+  token-reveal modal now auto-navigates into the new project once
+  dismissed, and a global `n` keyboard shortcut opens the create
+  modal (input-focus-guarded, self-removing on unmount).
+
+**Deliberately kept this lane's version over Replit's** for: this file
+(1392 vs Replit's 117-line condensed rewrite — full ledger, Rules,
+KFS table), `KNOWN_ISSUES.md` / `IDEAS.md` (absent from Replit's tree
+entirely — confirmed via `git ls-tree`, not just "didn't see them"),
+`backend/middleware/rateLimit.js` (Replit's copy still has the stale
+"mounted in server.js" comment this lane already corrected earlier
+this session), `vercel.json` + root `server.js` (both absent from
+Replit's tree — this is the actual, confirmed root cause of "no
+visible updates": the real app moved to `artifacts/api-server/` with
+no deployment config updated to match, and Vercel's dashboard almost
+certainly still points at the old root layout expecting files that
+no longer exist there), and `package.json`'s fuller metadata
+(name/description/license/`setup-db` script — Replit's is a stripped
+monorepo-member manifest; dependencies were already identical).
+
+**Verification:** every modified file `node --check`'d clean. Re-ran
+this session's jsdom harness against the merged `projects.js` — 19/19
+still pass (the new `onClose`-navigate and `n`-shortcut code paths
+didn't disturb the FAB/search/ToS-link behavior already covered).
+Built a second mocked-Express harness specifically for the merged
+`files.js`'s new `next(err)` pattern, with a real error-handling
+middleware in the test app (not just checking the function runs) —
+confirmed a thrown DB error still resolves in ~70ms with a clean 500
+via the central handler, and the happy path still returns 200.
+
+Force-pushed the merged result to `main` (`a2b741a`'s full 150-commit
+history as the base, so nothing this session or any prior session did
+is gone) only after all of the above — backup branch, full diff
+review, and verification — were already done.
+— Session 3
+
 ### Session 2 — Session Roster + Instructions pages
 **Status: shipped.** `frontend/js/roster.js`, `frontend/js/instructions.js`,
 `frontend/js/activity.js` (shared component), `frontend/css/instructions-roster.css`.
@@ -1142,6 +1411,62 @@ logged — not just that the DOM updated.
   either way, since no file outside the workspace is touched regardless).
 - Re-read every backend file end to end before touching anything,
   specifically to avoid manufacturing work.
+
+**Follow-up 2 (feature sprint #3/#6/#12, `5005449`):**
+- **#3**: profiled the project/workspace fetch path looking for real
+  N+1 against Turso first (found none -- every `store.js` function is
+  a single round trip) before reaching for a cache. The actual
+  redundancy was `getProject()` re-hitting the network on every
+  hash-nav, including tab switches on the same project, just to
+  render a header label. 30s TTL in-memory cache fixes that;
+  roster/activity's 15s polling deliberately left alone since caching
+  live coordination state would defeat the point of this app.
+- **#6**: `scripts/generate-skill.js` regenerates `frontend/SKILL.md`
+  from live route definitions on every `vercel-build` -- can't drift
+  from hand-maintenance the way a static doc would. Download button
+  lives in the home header.
+- **#12**: zip download in the workspace toolbar, parallel per-file
+  fetch (`Promise.all`) + client-side JSZip, no server zip stream.
+  **Flagged for Session 4**: reuses the existing per-file read route
+  so should already be bounded by current auth, but wants an
+  adversarial check, not just a code-read confirmation -- same
+  standard this file has held other "should be fine" claims to.
+- Did not touch #13 (optional, explicitly last in ship order).
+
+**Follow-up 3 (#13, `591470a`):**
+- The only remaining item across the whole 16-item sprint, so picked
+  it up rather than stopping at "optional" -- PAT-only (OAuth needs
+  an external app registration, out of reach from here; documented
+  as a deliberate scope cut, not silently dropped).
+- Traced the actual encryption requirement carefully before writing
+  any code: the server needs to DECRYPT the GitHub token itself (to
+  call GitHub's API on push), which is the opposite threat model from
+  contentCrypto.js's client-held key -- reused nothing from that file,
+  wrote a separate module (secretCrypto.js) with its own server-held
+  key from a new env var, and said so explicitly in both files so a
+  future session doesn't conflate the two.
+- Caught and corrected my own first pass mid-build: had reached for
+  scrypt for key derivation, which is a password-hardening KDF built
+  to resist brute-forcing a low-entropy secret -- wrong tool for
+  AISAPP_SECRET_KEY, which is meant to already be high-entropy.
+  Switched to HKDF before shipping.
+- Verified everything testable without live Turso creds or the
+  human's real PAT: crypto round-trip, GCM tamper rejection, missing-
+  key 503, request-shaping against the real GitHub API (safe calls
+  only -- invalid token, public unauthenticated lookup, nonexistent
+  repo -- no writes, no real credentials used), token-never-leaks
+  across every response shape including the pre-existing project
+  list/get/regenerate-token endpoints (stripSecret() didn't know
+  about the new nested field until this pass).
+- Found a real, live bug while doing this (not part of #13, but found
+  because #13 added another CDN script and prompted a CSP check):
+  scriptSrc/styleSrc only allowlisted 'self' + one inline-script hash,
+  silently blocking both this session's own JSZip (#12) and Session
+  1's Prism (#10) CDN scripts. Verified the block was real (spun up a
+  standalone helmet+express instance and read the actual response
+  header, not just read the config and assumed) before fixing.
+  Doesn't fix Prism's two inline <script> config blocks in index.html
+  (need their own hash) -- that's Session 1's file.
 
 ### Session 1 — Frontend Core (Workspace + file tree UI)
 **Status: shipped.** `frontend/index.html` (real app shell, replacing
@@ -1212,7 +1537,76 @@ system, plus an unrelated live crash fix found along the way.**
   tested against a sandbox with no real path to `*.turso.io` at all, so
   flagged as "worth checking against a real instance," not confirmed.
 
+**Follow-up 2 (feature sprint #7, #8, #9, #10, #14): transitions, button
+factory, per-extension file icons, Prism syntax highlighting, home
+page design pass.** `#2`/`#4`/`#5` remain open for this lane.
+- **#9**: `icons.js` gained an `EXT_ICONS` extension→icon map plus
+  `fileIconName()`/`fileIconEl()` helpers; the file tree now renders
+  a distinct icon per extension instead of one generic file icon.
+- **#10**: Prism (CDN, autoloader plugin -- zero build step, matching
+  Rule 1) renders a highlighted read-only `<pre>` by default when a
+  file is opened; clicking it (or an Edit/View toggle, shown only when
+  a highlighted view actually exists for that extension) swaps in the
+  textarea. Gutter padding/font-size/line-height matched exactly to
+  the textarea's so toggling doesn't visually jump.
+- **#7**: page-enter animation on every route change, modal open
+  animation, staggered project-card list entrance. `prefers-reduced-
+  motion` respected throughout.
+- **#8**: new `frontend/js/ui.js` -- one `h()`-based button factory
+  (`window.AisappUI.button(label, opts)`) with variant/icon/disabled
+  handling, so new call sites stop hand-assembling the same three
+  lines. Existing `.aisapp-btn` call sites in other files weren't
+  rewritten to use it (five files, four of them other sessions' --
+  bigger and riskier than #8 asked for); the hover/press/transition
+  feel itself lives in `projects.css`'s already-shared `.aisapp-btn`
+  rules, so that part applies everywhere regardless of which helper
+  built a given button.
+- **#14**: home page hero (eyebrow / title / subtitle hierarchy)
+  replacing the flat page title, using only existing `--aisapp-*`
+  tokens.
+- Incidental: `service-worker.js`'s `SHELL_ASSETS` was missing
+  `settings.js`/`settings.css`/`migration.js` from before this
+  session, plus the new `ui.js` -- added all four, bumped cache to v5.
+
+**Reconciling with Session 3/4's concurrent work on the same
+function.** Session 3's auto-save/dirty-badge/word-wrap/status-bar/
+copy-path/kbd-hint work (pushed while this was in progress, after an
+external force-push by "Replit Agent" that Session 3 had to
+hybrid-reconcile -- see their ledger entry) landed in the exact same
+`renderEditor()` block this session restructured for the Prism view
+toggle. `git merge` flagged real conflicts (not the trivial kind);
+resolved by hand-writing one integrated version rather than picking a
+side: word-wrap toggle, tab-handling, and the Ln/Col status bar are
+edit-mode-only (they operate on the textarea, which doesn't exist in
+the Prism read view) and now only render when `state.editMode` is
+true or no highlighted view exists for the extension; the copy-path
+button is mode-independent and always shows. `workspace.css` had a
+second, simpler conflict (both sessions appended new rules at the
+same end-of-file anchor) -- concatenated; also corrected a pre-existing
+typo found while there, `--aisapp-mono-font` (undefined token, silently
+fell back to generic `monospace`) to the real `--aisapp-font-mono`.
+
+Verified before pushing: `node --check` across every JS file in the
+repo (not just touched ones) and a brace-balance sweep across every
+CSS file, both post-merge; a live server boot serving all touched/new
+static assets (200s); `fileIconName()` unit-tested against 13
+extensions; the button factory DOM-tested via a local jsdom install
+(6 assertions: variant classes, icon rendering, icon-only vs.
+icon+label, onClick wiring, disabled state); Prism's exact DOM wiring
+path replicated against a local prismjs install, confirming real
+token spans; and, after the merge, a full click-through of the live
+module tree via jsdom -- open a file (Prism view: highlighted pre
+present, textarea/wrap-toggle/status-bar absent, copy-path present),
+click Edit (textarea appears, wrap-toggle and status-bar appear),
+type (dirty badge shows, save button enables) -- all without a throw.
+Live create-project/write-file/tree API calls are still blocked by
+this sandbox's no-egress-to-`turso.io` limitation (pre-existing,
+confirmed via the 403 in the server log pointing at Turso, not app
+code) -- backend-dependent testing of the file tree/editor against
+real data is unverified here and worth a real-device check.
+
 ### Session 5 — Testing, docs, and integration *(historical — lane retired)*
+
 **Status: shipped, lane closed.** Full route smoke test
 (`SESSION5_TEST_REPORT.md`), conflict-detection end-to-end verification,
 confirmed the AI→approve permission boundary genuinely 404s rather than

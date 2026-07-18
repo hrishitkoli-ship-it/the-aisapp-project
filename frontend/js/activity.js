@@ -91,6 +91,8 @@
     file_write: { icon: 'edit', label: 'File write' },
     file_delete: { icon: 'trash', label: 'File delete' },
     token_regenerated: { icon: 'key', label: 'Token' },
+    github_connected: { icon: 'git-branch', label: 'GitHub' },
+    github_push: { icon: 'git-branch', label: 'GitHub push' },
   };
 
   function metaFor(type) {
@@ -113,7 +115,7 @@
           ]),
           h('div', { class: 'aisapp-activity-meta' }, [
             entry.actor ? h('span', {}, entry.actor) : null,
-            entry.timestamp ? h('span', {}, timeAgo(entry.timestamp)) : null,
+            entry.timestamp ? h('span', { 'data-ts': entry.timestamp }, timeAgo(entry.timestamp)) : null,
           ]),
         ]),
       ]);
@@ -129,7 +131,7 @@
         h('div', { class: 'aisapp-activity-message' }, entry.message || meta.label),
         h('div', { class: 'aisapp-activity-meta' }, [
           entry.actor ? h('span', {}, entry.actor) : null,
-          entry.timestamp ? h('span', {}, timeAgo(entry.timestamp)) : null,
+          entry.timestamp ? h('span', { 'data-ts': entry.timestamp }, timeAgo(entry.timestamp)) : null,
         ]),
       ]),
     ]);
@@ -138,6 +140,27 @@
   // -------------------------------------------------------------
   // Public mount function
   // -------------------------------------------------------------
+
+  // ---------------------------------------------------------------
+  // Activity type filter
+  // ---------------------------------------------------------------
+
+  const ACTIVITY_FILTERS = [
+    { key: 'all', label: 'All' },
+    { key: 'file', label: 'Files' },
+    { key: 'session', label: 'Sessions' },
+    { key: 'assignment', label: 'Assignments' },
+    { key: 'alert', label: 'Alerts' },
+  ];
+
+  function matchesActivityFilter(entry, filter) {
+    if (filter === 'all') return true;
+    if (filter === 'alert') return entry.type === 'security_alert';
+    if (filter === 'file') return entry.type === 'file_write' || entry.type === 'file_delete';
+    if (filter === 'session') return entry.type === 'session_registered' || entry.type === 'task_requested';
+    if (filter === 'assignment') return typeof entry.type === 'string' && entry.type.startsWith('assignment_');
+    return true;
+  }
 
   /**
    * @param {HTMLElement} mountEl
@@ -163,9 +186,48 @@
         window.AisappIcons.el('refresh', { size: 16 })
       ),
     ]);
+
+    // Filter chip bar -- lets the human focus on one event class
+    // without losing the rest of the feed's polling state.
+    const filterBarEl = h('div', { class: 'aisapp-activity-filter' });
+    let activeFilter = 'all';
+    let allEntries = [];
+
     const listEl = h('div', { class: 'aisapp-activity-list' });
 
+    function renderFilteredList() {
+      clear(listEl);
+      const filtered = allEntries.filter((e) => matchesActivityFilter(e, activeFilter));
+      if (filtered.length === 0) {
+        listEl.appendChild(
+          h('p', { class: 'aisapp-empty-state' },
+            activeFilter === 'all' ? 'No activity yet.' : 'No activity of this type.')
+        );
+        return;
+      }
+      for (const entry of filtered) {
+        listEl.appendChild(renderRow(entry));
+      }
+    }
+
+    function renderFilterBar() {
+      clear(filterBarEl);
+      for (const f of ACTIVITY_FILTERS) {
+        const btn = h('button', {
+          class: `aisapp-activity-filter-btn${activeFilter === f.key ? ' is-active' : ''}`,
+          onclick: () => {
+            activeFilter = f.key;
+            renderFilterBar();
+            renderFilteredList();
+          },
+        }, f.label);
+        filterBarEl.appendChild(btn);
+      }
+    }
+    renderFilterBar();
+
     container.appendChild(header);
+    container.appendChild(filterBarEl);
     container.appendChild(listEl);
     mountEl.appendChild(container);
 
@@ -184,16 +246,8 @@
         const entries = await res.json();
         if (destroyed) return;
 
-        clear(listEl);
-        if (!entries || entries.length === 0) {
-          listEl.appendChild(
-            h('p', { class: 'aisapp-empty-state' }, 'No activity yet.')
-          );
-          return;
-        }
-        for (const entry of entries) {
-          listEl.appendChild(renderRow(entry));
-        }
+        allEntries = entries || [];
+        renderFilteredList();
       } catch (err) {
         if (destroyed) return;
         // Don't blow away a previously-good feed on a transient poll
@@ -243,9 +297,19 @@
     }
     document.addEventListener('visibilitychange', onVisibilityChange);
 
+    // Tick every 30 s so "X min ago" timestamps stay current without
+    // re-fetching. Mirrors the roster's ticker pattern.
+    const tsTicker = setInterval(() => {
+      if (destroyed) { clearInterval(tsTicker); return; }
+      listEl.querySelectorAll('[data-ts]').forEach((el) => {
+        el.textContent = timeAgo(el.getAttribute('data-ts'));
+      });
+    }, 30000);
+
     function destroy() {
       destroyed = true;
       if (timerId) clearTimeout(timerId);
+      clearInterval(tsTicker);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     }
 

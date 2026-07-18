@@ -42,44 +42,56 @@
   margin: 0;
 }
 
-/* ---- Search bar (#11) ---- */
+/* ---- Search input ---- */
 
 .aisapp-search-input {
-  display: block;
-  width: 100%;
-  background: var(--aisapp-surface);
-  border: 1px solid var(--aisapp-border);
-  border-radius: var(--aisapp-radius);
-  color: var(--aisapp-text);
-  padding: 10px 14px;
-  font-size: 0.95rem;
-  font-family: inherit;
-  box-sizing: border-box;
-  margin-bottom: 14px;
-  transition: border-color 0.12s ease;
-  /* Remove the browser-default search cancel button appearance on
-     WebKit -- the input already clears naturally when the user
-     backspaces, and the native button overlaps with any right-side
-     padding. Keep the type="search" for semantics/a11y. */
-  -webkit-appearance: none;
-  appearance: none;
+  margin-bottom: 16px;
 }
 
-.aisapp-search-input:focus {
+.aisapp-search-input::-webkit-search-cancel-button {
+  cursor: pointer;
+}
+
+/* ---- Floating action button ---- */
+/* Fixed position, bottom-right. z-index sits above page content but
+   below modal overlays (1000), so an open modal always wins. */
+
+.aisapp-fab {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--aisapp-accent);
+  border: none;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  z-index: 500;
+}
+
+.aisapp-fab:hover,
+.aisapp-fab:focus {
+  filter: brightness(1.08);
   outline: none;
-  border-color: var(--aisapp-accent);
 }
 
-.aisapp-search-input::placeholder {
-  color: var(--aisapp-text-dim);
+.aisapp-fab:active {
+  filter: brightness(0.95);
 }
 
-/* ---- Create form (used inside the FAB modal, not inline) ---- */
+/* Create form -- now rendered inside showCreateProjectModal's .aisapp-modal
+   rather than as a permanent inline block, but keeps the same class/
+   styling for the fields themselves. */
 
 .aisapp-create-form {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .aisapp-input {
@@ -92,7 +104,6 @@
   font-family: inherit;
   width: 100%;
   box-sizing: border-box;
-  transition: border-color 0.12s ease;
 }
 
 .aisapp-input:focus {
@@ -156,15 +167,6 @@
   font-size: 1rem;
   cursor: pointer;
   flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.aisapp-icon-btn:hover,
-.aisapp-icon-btn:focus {
-  border-color: var(--aisapp-text-dim);
-  color: var(--aisapp-text);
 }
 
 .aisapp-icon-btn--danger:hover,
@@ -173,61 +175,12 @@
   border-color: var(--aisapp-danger);
 }
 
-/* ---- FAB (#15) ---- */
-/* Blue circular button fixed at bottom-right, above the sticky tab
-   bar. 56px is the standard Material-style FAB touch target. The
-   bottom offset accounts for the tab bar's approximate height (~52px
-   of content + padding) plus the safe-area inset on notched phones,
-   so it doesn't sit behind the navigation strip on any device. */
-
-.aisapp-fab {
-  position: fixed;
-  right: 20px;
-  bottom: calc(68px + env(safe-area-inset-bottom, 0px));
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  background: var(--aisapp-accent);
-  border: none;
-  color: #fff;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 4px 16px rgba(77, 141, 255, 0.45), 0 2px 6px rgba(0, 0, 0, 0.4);
-  z-index: 90; /* below modal overlays (1000) but above page content */
-  transition: background-color 0.12s ease, transform 0.1s ease, box-shadow 0.12s ease;
-}
-
-.aisapp-fab:hover {
-  background: color-mix(in srgb, var(--aisapp-accent) 85%, #fff);
-  box-shadow: 0 6px 20px rgba(77, 141, 255, 0.55), 0 2px 8px rgba(0, 0, 0, 0.4);
-}
-
-.aisapp-fab:active {
-  transform: scale(0.94);
-  box-shadow: 0 2px 8px rgba(77, 141, 255, 0.35), 0 1px 4px rgba(0, 0, 0, 0.3);
-}
-
-.aisapp-fab:focus-visible {
-  outline: 3px solid var(--aisapp-accent);
-  outline-offset: 3px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .aisapp-fab {
-    transition: none;
-  }
-}
-
 /* ---- Project list ---- */
 
 .aisapp-project-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  /* Bottom padding so the last card isn't clipped by the FAB */
-  padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
 }
 
 .aisapp-project-row {
@@ -344,7 +297,7 @@
   color: var(--aisapp-danger);
 }
 
-/* ---- Modals (token reveal + destructive confirm + create) ---- */
+/* ---- Modals (token reveal + destructive confirm) ---- */
 
 .aisapp-modal-overlay {
   position: fixed;
@@ -408,53 +361,6 @@
   justify-content: flex-end;
 }
 
-/* -- Create modal specifics (#15) -- */
-/* The create modal gets a header row with the title and a close
-   button side-by-side, and slightly more padding to breathe. */
-
-.aisapp-create-modal {
-  padding: 0;
-  overflow: hidden;
-}
-
-.aisapp-modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px 12px;
-  border-bottom: 1px solid var(--aisapp-border);
-}
-
-.aisapp-modal-header h2 {
-  margin: 0;
-  font-size: 1.05rem;
-}
-
-.aisapp-modal-close {
-  background: transparent;
-  border: none;
-  color: var(--aisapp-text-dim);
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.aisapp-modal-close:hover {
-  color: var(--aisapp-text);
-}
-
-.aisapp-create-modal .aisapp-status {
-  margin: 12px 20px 0;
-}
-
-.aisapp-create-modal .aisapp-create-form {
-  padding: 16px 20px 20px;
-}
-
 @media (max-width: 480px) {
   .aisapp-modal-actions {
     flex-direction: column-reverse;
@@ -462,25 +368,4 @@
   .aisapp-modal-actions .aisapp-btn {
     width: 100%;
   }
-
-  /* On small screens slide the create modal up from the bottom like a
-     sheet, matching how native mobile creation flows work. */
-  .aisapp-modal-overlay:has(.aisapp-create-modal) {
-    align-items: flex-end;
-    padding: 0;
-  }
-  .aisapp-create-modal {
-    border-bottom-left-radius: 0;
-    border-bottom-right-radius: 0;
-    max-width: 100%;
-    width: 100%;
-  }
-}
-
-/* ---- Icon row helper (shared with icons.js output) ---- */
-
-.aisapp-icon-row {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
 }

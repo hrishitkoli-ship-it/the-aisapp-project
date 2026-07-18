@@ -97,9 +97,13 @@ function rateLimitResponse(req, res) {
  *
  * LIMIT CHOICE, and a real bug this fixes: this limiter and
  * aiWorkLimiter both run on the same request path, in sequence
- * (aiSurfaceLimiter mounted in server.js before each router; aiWorkLimiter
- * mounted inside the router right after requireAIToken) -- they are
- * NOT alternatives, they STACK, so whichever has the lower ceiling
+ * (aiSurfaceLimiter mounted in app.js before each AI router;
+ * aiWorkLimiter mounted inside the router right after requireAIToken
+ * -- CORRECTED here from an earlier version of this comment that said
+ * "server.js": that was accurate when this was written, but server.js
+ * no longer mounts any routes at all, having since been rewritten into
+ * a thin wrapper around app.js's shared definition, see that file's
+ * own header for why) -- they are NOT alternatives, they STACK, so whichever has the lower ceiling
  * always wins for any single client. This was originally set to 100,
  * intended as "generous, just needs to stop hammering" -- but tested
  * live against a single legitimate project with a valid token (the

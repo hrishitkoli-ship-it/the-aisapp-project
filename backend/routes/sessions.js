@@ -55,6 +55,23 @@ humanRouter.get('/', async (req, res, next) => {
   }
 });
 
+// Human-facing: dismiss (remove) a stale session from the roster.
+// Intentionally human-only: an AI session removing another session
+// would bypass the "human stays in control" principle for roster state.
+humanRouter.delete('/:sessionId', async (req, res, next) => {
+  try {
+    const { projectId, sessionId } = req.params;
+    const sessions = await store.getSessions(projectId);
+    const idx = sessions.findIndex((s) => s.id === sessionId);
+    if (idx === -1) return res.status(404).json({ error: 'Session not found.' });
+    sessions.splice(idx, 1);
+    await store.saveSessions(projectId, sessions);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ---------------------------------------------------------------------
 // AI-facing: read + write
 // ---------------------------------------------------------------------
@@ -81,6 +98,15 @@ aiRouter.post('/', async (req, res, next) => {
 
     if (!label || typeof label !== 'string') {
       return res.status(400).json({ error: '"label" (a human-readable session name) is required.' });
+    }
+    if (label.trim().length > 80) {
+      return res.status(400).json({ error: '"label" must be 80 characters or fewer.' });
+    }
+    if ((fn || '').trim().length > 200) {
+      return res.status(400).json({ error: '"function" must be 200 characters or fewer.' });
+    }
+    if ((currentTask || '').trim().length > 200) {
+      return res.status(400).json({ error: '"currentTask" must be 200 characters or fewer.' });
     }
 
     const sessions = await store.getSessions(projectId);
@@ -132,7 +158,16 @@ aiRouter.patch('/:sessionId', async (req, res, next) => {
     const { function: fn, currentTask, status } = req.body || {};
     if (fn !== undefined) sessions[idx].function = String(fn).trim();
     if (currentTask !== undefined) sessions[idx].currentTask = String(currentTask).trim();
-    if (status !== undefined) sessions[idx].status = String(status).trim();
+    if (status !== undefined) {
+      const ALLOWED_STATUSES = ['active', 'idle', 'done', 'error'];
+      const s = String(status).trim();
+      if (!ALLOWED_STATUSES.includes(s)) {
+        return res.status(400).json({
+          error: `"status" must be one of: ${ALLOWED_STATUSES.join(', ')}.`,
+        });
+      }
+      sessions[idx].status = s;
+    }
     sessions[idx].lastSeenAt = new Date().toISOString();
 
     await store.saveSessions(projectId, sessions);
@@ -153,6 +188,16 @@ aiRouter.post('/:sessionId/requests', async (req, res, next) => {
     if (!message || typeof message !== 'string') {
       return res.status(400).json({ error: '"message" describing the requested task is required.' });
     }
+    if (message.trim().length > 1000) {
+      return res.status(400).json({ error: '"message" must be 1000 characters or fewer.' });
+    }
+    const ALLOWED_PRIORITIES = ['normal', 'high', 'urgent'];
+    const resolvedPriority = String(priority || 'normal').trim();
+    if (!ALLOWED_PRIORITIES.includes(resolvedPriority)) {
+      return res.status(400).json({
+        error: `"priority" must be one of: ${ALLOWED_PRIORITIES.join(', ')}.`,
+      });
+    }
 
     const sessions = await store.getSessions(projectId);
     const targetIdx = sessions.findIndex((s) => s.id === sessionId);
@@ -167,7 +212,7 @@ aiRouter.post('/:sessionId/requests', async (req, res, next) => {
       fromSessionId: requestingSessionId,
       fromLabel: requestingLabel,
       message: message.trim(),
-      priority: priority || 'normal',
+      priority: resolvedPriority,
       status: 'pending',
       createdAt: new Date().toISOString(),
     };
@@ -196,6 +241,13 @@ aiRouter.patch('/:sessionId/requests/:requestId', async (req, res, next) => {
     const { projectId, sessionId, requestId } = req.params;
     const { status } = req.body || {};
     if (!status) return res.status(400).json({ error: '"status" is required.' });
+    const ALLOWED_REQUEST_STATUSES = ['pending', 'in_progress', 'done', 'dismissed'];
+    const s = String(status).trim();
+    if (!ALLOWED_REQUEST_STATUSES.includes(s)) {
+      return res.status(400).json({
+        error: `"status" must be one of: ${ALLOWED_REQUEST_STATUSES.join(', ')}.`,
+      });
+    }
 
     const sessions = await store.getSessions(projectId);
     const sessionIdx = sessions.findIndex((s) => s.id === sessionId);
@@ -204,7 +256,7 @@ aiRouter.patch('/:sessionId/requests/:requestId', async (req, res, next) => {
     const reqIdx = sessions[sessionIdx].taskQueue.findIndex((r) => r.id === requestId);
     if (reqIdx === -1) return res.status(404).json({ error: 'Request not found in queue.' });
 
-    sessions[sessionIdx].taskQueue[reqIdx].status = status;
+    sessions[sessionIdx].taskQueue[reqIdx].status = s;
     await store.saveSessions(projectId, sessions);
     res.json(sessions[sessionIdx].taskQueue[reqIdx]);
   } catch (err) {
