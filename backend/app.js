@@ -86,7 +86,7 @@ app.use(
         defaultSrc: ["'self'"],
         scriptSrc: [
           "'self'",
-          "'sha256-eyzaPhp7EnY/xhsDkw+V8fLV/7cmZ350RnPTdlENXOw='", // serviceWorker.register() inline snippet in index.html -- see comment above
+          "'sha256-hIoPKioPhemuiPB45DRjfJH/MJvbsoc8NsVWCtCd1j0='", // serviceWorker.register() inline snippet in index.html
         ],
         styleSrc: ["'self'"],
         imgSrc: ["'self'", 'data:'], // data: for the PWA icons' any inline favicon/data-uri usage

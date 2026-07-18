@@ -297,7 +297,7 @@
     });
   }
 
-  function showTokenModal({ token, projectName, isRegeneration }) {
+  function showTokenModal({ token, projectName, isRegeneration, onClose }) {
     const overlay = h('div', { class: 'aisapp-modal-overlay' });
 
     const copyBtn = h(
@@ -326,7 +326,10 @@
       'button',
       {
         class: 'aisapp-btn',
-        onclick: () => overlay.remove(),
+        onclick: () => {
+          overlay.remove();
+          if (onClose) onClose();
+        },
       },
       "I've copied it"
     );
@@ -794,7 +797,15 @@
             // token -- the two modals can't coexist safely (focus trap,
             // z-index, scroll-lock) so we sequence them.
             close();
-            showTokenModal({ token: project.token, projectName: project.name, isRegeneration: false });
+            // onClose navigates into the project once the human confirms
+            // they've saved the token -- sequenced after dismissal so the
+            // workspace doesn't load behind a still-open token modal.
+            showTokenModal({
+              token: project.token,
+              projectName: project.name,
+              isRegeneration: false,
+              onClose: () => selectProject(project.id),
+            });
             refresh();
           },
           (msg, kind, err) => {
@@ -863,6 +874,28 @@
         const firstInput = modal.querySelector('input');
         if (firstInput) firstInput.focus();
       }
+
+      // -- Keyboard shortcut: 'n' to open create modal ---------
+      // Self-cleaning: checks mountEl.isConnected on every keydown
+      // so it silently removes itself when the router unmounts this
+      // page, rather than requiring a destroy() lifecycle hook.
+      function onGlobalKeydown(e) {
+        if (!mountEl.isConnected) {
+          document.removeEventListener('keydown', onGlobalKeydown);
+          return;
+        }
+        // Don't hijack keystrokes when the user is typing in an input.
+        if (
+          e.target.tagName === 'INPUT' ||
+          e.target.tagName === 'TEXTAREA' ||
+          e.target.isContentEditable
+        ) return;
+        if ((e.key === 'n' || e.key === 'N') && !e.metaKey && !e.ctrlKey && !e.altKey) {
+          e.preventDefault();
+          openCreateModal();
+        }
+      }
+      document.addEventListener('keydown', onGlobalKeydown);
 
       // -- Data loading ----------------------------------------
 

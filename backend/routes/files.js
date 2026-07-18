@@ -22,6 +22,24 @@
  * in try/catch, since it's the one handler here that had no error
  * handling at all in the original (its try/catch only existed around
  * res.json, not around the store call).
+ *
+ * CHANGED (KFS #3 fix): all four shared handlers now accept `next`
+ * and route unhandled errors through it so the central error handler
+ * in app.js can translate typed errors (InvalidProjectIdError → 400,
+ * ProjectSizeLimitError/AccountSizeLimitError → 413) correctly.
+ * Previously they hard-coded res.status(500), so every DB/size error
+ * silently came back as a generic 500 regardless of its actual cause.
+ *
+ * Also fixed: handleWriteFile's TOS gate (`store.hasAcceptedTos()`)
+ * was being awaited OUTSIDE the try block -- a DB error there would
+ * produce an unhandled rejection in Express 4, which never auto-routes
+ * rejected async handler promises to error middleware. Moved inside
+ * try/catch.
+ *
+ * Also fixed: logSecurityAlert calls inside catch blocks now use
+ * `.catch(() => {})` rather than bare `await` so a secondary DB error
+ * in the alert logger can't produce another unhandled rejection and
+ * interfere with the response that's already in flight.
  * ------------------------------------------------------------------
  */
 
@@ -46,17 +64,17 @@ const aiRouter = express.Router({ mergeParams: true });
 // Shared handlers (identity-agnostic once req.isAI / req.project is set)
 // ---------------------------------------------------------------------
 
-async function handleListTree(req, res) {
+async function handleListTree(req, res, next) {
   const { projectId } = req.params;
   try {
     const tree = await buildFileTree(projectId);
     res.json({ tree });
   } catch (err) {
-    res.status(500).json({ error: `Failed to list files: ${err.message}` });
+    next(err);
   }
 }
 
-async function handleReadFile(req, res) {
+async function handleReadFile(req, res, next) {
   const { projectId } = req.params;
   const relPath = req.params[0] || '';
   try {
@@ -67,14 +85,16 @@ async function handleReadFile(req, res) {
     res.json({ path: relPath, content });
   } catch (err) {
     if (err instanceof PathSafetyError) {
-      await logSecurityAlert(req, projectId, relPath, 'read');
+      // Fire-and-forget: don't let a secondary DB error in the alert
+      // logger produce another unhandled rejection.
+      logSecurityAlert(req, projectId, relPath, 'read').catch(() => {});
       return res.status(400).json({ error: err.message });
     }
-    res.status(500).json({ error: `Failed to read file: ${err.message}` });
+    next(err);
   }
 }
 
-async function handleWriteFile(req, res) {
+async function handleWriteFile(req, res, next) {
   const { projectId } = req.params;
   const relPath = req.params[0] || '';
   const { content, expectedVersion, force } = req.body || {};
@@ -83,32 +103,24 @@ async function handleWriteFile(req, res) {
     return res.status(400).json({ error: '"content" (string) is required.' });
   }
 
-  // TOS GATE: must be accepted (once, ever, per device -- see the
-  // Settings page) before this device can write ANY file content,
-  // AI-agent or human. Checked here rather than only client-side so
-  // it can't be bypassed by an AI agent calling the API directly
-  // without ever loading the frontend. req.project.deviceCode is
-  // always present for any project created after device identity
-  // landed (routes/projects.js sets it at creation time); a project
-  // that somehow predates that (deviceCode undefined) fails closed --
-  // hasAcceptedTos(undefined) returns false -- rather than silently
-  // exempting old projects from a check meant to apply device-wide.
-  //
-  // Lives inside the try block below (moved here from before it,
-  // where it originally sat unguarded): this is a real `await store.*`
-  // call that can throw on any transient DB error, same as every other
-  // store call this handler makes -- KFS #3's exact shape (an
-  // unguarded await in an async handler with no next()) just applied
-  // to a check that was added after the handler's own try/catch was
-  // already in place, so it landed outside by omission rather than by
-  // design. Left unguarded, a DB hiccup here would hang the request
-  // (no response, no crash) instead of surfacing the same clean 500
-  // every other failure path in this handler already produces.
   const actorLabel = req.isAI
     ? `AI${req.callerSessionId ? `:${req.callerSessionId}` : ''}`
     : 'human';
 
   try {
+    // TOS GATE: must be accepted (once, ever, per device -- see the
+    // Settings page) before this device can write ANY file content,
+    // AI-agent or human. Checked here rather than only client-side so
+    // it can't be bypassed by an AI agent calling the API directly
+    // without ever loading the frontend. req.project.deviceCode is
+    // always present for any project created after device identity
+    // landed (routes/projects.js sets it at creation time); a project
+    // that somehow predates that (deviceCode undefined) fails closed --
+    // hasAcceptedTos(undefined) returns false -- rather than silently
+    // exempting old projects from a check meant to apply device-wide.
+    //
+    // MOVED INSIDE try/catch: was previously outside it, meaning a DB
+    // error here would be an unhandled rejection in Express 4 (KFS #3).
     const accepted = await store.hasAcceptedTos(req.project.deviceCode);
     if (!accepted) {
       return res.status(403).json({
@@ -148,27 +160,18 @@ async function handleWriteFile(req, res) {
     res.json({ success: true, path: relPath, version: result.version });
   } catch (err) {
     if (err instanceof PathSafetyError) {
-      await logSecurityAlert(req, projectId, relPath, 'write');
+      logSecurityAlert(req, projectId, relPath, 'write').catch(() => {});
       return res.status(400).json({ error: err.message });
     }
-    // Was: `err instanceof store.ProjectSizeLimitError || err instanceof
-    // store.AccountSizeLimitError` -- neither class exists on the
-    // currently-live store.js (confirmed via its module.exports, same
-    // check app.js's own error handler already went through). Since
-    // the right-hand side of instanceof must be a constructor,
-    // checking against `undefined` throws a TypeError, which crashed
-    // this whole process on any file-write error (confirmed live, not
-    // theoretical). Generic statusCode check instead, matching app.js's
-    // already-reconciled handler -- catches any current or future typed
-    // error that sets one without needing another manual fix here.
-    if (err.statusCode) {
-      return res.status(err.statusCode).json({ error: err.message });
-    }
-    res.status(500).json({ error: `Failed to write file: ${err.message}` });
+    // next(err) lets the central handler in app.js translate typed
+    // errors correctly: InvalidProjectIdError → 400,
+    // ProjectSizeLimitError/AccountSizeLimitError (err.statusCode=413) → 413,
+    // everything else → 500.
+    next(err);
   }
 }
 
-async function handleDeleteFile(req, res) {
+async function handleDeleteFile(req, res, next) {
   const { projectId } = req.params;
   const relPath = req.params[0] || '';
   const actorLabel = req.isAI
@@ -190,10 +193,10 @@ async function handleDeleteFile(req, res) {
     res.json({ success: true });
   } catch (err) {
     if (err instanceof PathSafetyError) {
-      await logSecurityAlert(req, projectId, relPath, 'delete');
+      logSecurityAlert(req, projectId, relPath, 'delete').catch(() => {});
       return res.status(400).json({ error: err.message });
     }
-    res.status(500).json({ error: `Failed to delete: ${err.message}` });
+    next(err);
   }
 }
 
@@ -238,4 +241,3 @@ aiRouter.put(/^\/content\/(.*)$/, handleWriteFile);
 aiRouter.delete(/^\/content\/(.*)$/, handleDeleteFile);
 
 module.exports = { humanRouter, aiRouter };
-

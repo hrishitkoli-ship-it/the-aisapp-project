@@ -211,3 +211,36 @@ rule check, and the try/catch was already sitting right there a few
 lines down, easy to assume it already covered everything above it too.
 
 Logged by Session 3.
+
+---
+
+### Two bugs found only by diffing against Replit Agent's parallel copy (FIXED)
+
+Found during the hybrid-merge review (see `INSTRUCTIONS.md` Session 3
+follow-up entry for the full context of that merge) — neither would
+have surfaced from reading this lane's own code in isolation, since
+both files "looked" complete and untouched.
+
+**CSP hash mismatch in `backend/app.js`.** The `script-src` hash for
+`frontend/index.html`'s inline service-worker-registration script
+didn't match the script's actual content. Confirmed by directly
+recomputing the SHA-256 of the inline script (the two trees'
+`index.html` are byte-identical — only the hash in `app.js` differed
+between them). Under a real CSP-enforcing browser this silently blocks
+the inline script from running at all, meaning service worker
+registration — and therefore PWA installability/offline support —
+would fail with no visible error. Fixed by taking the correct hash
+(confirmed correct by recomputation, not just "the other copy's
+value").
+
+**Missing device-secret header in `frontend/js/pages/settings.js`.**
+Its `api()` fetch wrapper never attached `X-Device-Secret` to any
+request. Every device-secret-gated endpoint — including ToS
+acceptance, the entire reason the Settings page exists — would 401.
+`projects.js` has always sent this header correctly; `settings.js`
+runs as a separate module with no shared scope and simply never picked
+up the same logic. Fixed by reading the same `localStorage` key
+`projects.js` writes (`aisapp:deviceSecret`, with the pre-rename
+`aihub:deviceSecret` fallback preserved).
+
+Logged by Session 3.

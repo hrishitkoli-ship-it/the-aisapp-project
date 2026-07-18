@@ -1236,6 +1236,125 @@ Open to Done, noting explicitly that direct human instruction is what
 authorized acting on it — not self-approval, consistent with that
 file's own stated rule.
 
+**Follow-up (same session): main was force-pushed by a separate tool
+("Replit Agent") to a disconnected 6-commit history — discovered while
+investigating "no visible updates on the website," reconciled per
+direct human decision (hybrid: keep Replit's genuine improvements,
+restore the docs, fix deployment).**
+
+`git push` was rejected with a real divergence, not a normal
+fetch-first race: `git merge-base HEAD origin/main` returned nothing —
+Replit's 6 commits share zero ancestry with this repo's 150 commits.
+Root commit `8e0fa4b "Initial commit"` (author "Replit Agent") had
+author-date 2026-07-13, several days before the force-push itself
+(GitHub's events API shows no pushes from that date — the author-date
+almost certainly reflects Replit's own workspace-creation timestamp,
+not when this specific commit was made or pushed). **Nothing was
+force-pushed by this session before confirming with the human** — full
+findings reported, human chose the reconciliation path, only then
+executed.
+
+**Backed up first:** Replit's pre-merge state pushed to a new branch,
+`replit-agent-snapshot`, before touching `main` at all — so this
+merge is reversible even after the force-push below.
+
+**What Replit's tree actually was, on inspection (not just commit
+messages):** not a from-scratch rebuild. It wrapped the real app,
+substantially intact, inside `artifacts/api-server/` as one piece of
+a pnpm-workspace monorepo (Replit's own project convention), alongside
+a `mockup-sandbox` (unrelated shadcn/ui + Vite scaffold), several
+`lib/api-*` packages (OpenAPI/zod/drizzle codegen scaffolding, never
+wired to the real app), and a parallel `src/*.ts` + `build.mjs`
+Express+esbuild starter template — also never wired in (the real app's
+own `package.json` `dev`/`start` scripts still point at
+`backend/server.js`, confirmed by reading them, not assumed). All of
+the above: **discarded**, not merged — inert boilerplate, and the
+TS/esbuild pieces would have directly violated this file's own
+Non-Negotiable Rule #1 (no build step) if adopted.
+
+**What was genuinely better in Replit's copy of the real app — found
+via a full file-by-file diff, not a guess, and adopted:**
+- `backend/routes/files.js`: all four shared handlers now take `next`
+  and route errors through it instead of hardcoding `res.status(500)`
+  — lets `app.js`'s central handler correctly translate
+  `InvalidProjectIdError`→400, size-limit errors→413, instead of
+  everything collapsing to a generic 500. Also converted
+  `logSecurityAlert` calls inside `catch` blocks from bare `await` to
+  `.catch(() => {})` — a bare await there means a *second* DB error
+  (while logging the first) throws again, uncaught, inside a catch
+  block, which doesn't get a second chance to be caught — same KFS #3
+  shape, one level deeper, that this session's own audit missed.
+- `backend/routes/sessions.js`: new human-only `DELETE /:sessionId`
+  (dismiss a stale session from the roster — required backend
+  half of the frontend's "dismiss stale sessions" feature, see
+  below), plus length/enum validation on session status, request
+  priority, and request status fields.
+- `backend/routes/instructions.js` / `projects.js`: name/description
+  length limits; `instructions.js` additionally verifies the target
+  `sessionId` exists before creating an assignment, preventing a
+  dangling record.
+- `backend/db/store.js`: `TURSO_DATABASE_URL` now has `libsql://`
+  converted to `https://` and stray quote characters stripped before
+  connecting — handles a real copy-paste failure mode, wasn't handled
+  before.
+- `backend/app.js`: **a genuine bug in this lane's own prior work** —
+  the CSP `script-src` hash for `index.html`'s inline service-worker
+  script didn't match the script's actual content (verified by
+  recomputing the SHA-256 directly: the file content is byte-identical
+  between both trees, only the hash differs, and only Replit's hash
+  matches what the content actually hashes to). Under a real CSP-
+  enforcing browser this would have silently blocked service-worker
+  registration — found only because this merge required a line-by-line
+  diff of a file that otherwise looked untouched.
+- `frontend/js/pages/settings.js`: **another real bug** — its `api()`
+  fetch wrapper never attached the `X-Device-Secret` header at all,
+  meaning any device-secret-gated endpoint (ToS acceptance itself,
+  the exact thing Settings exists for) would have 401'd. Fixed by
+  reading the same localStorage key `projects.js` writes.
+- `frontend/js/pages/workspace.js` (684→785 lines) — the actual "QoL"
+  work: autosave, word-wrap toggle, dirty-state badge, Ln/Col bar,
+  ⌘S hint, copy-path, Escape handling, tab→spaces.
+- `frontend/js/activity.js` / `roster.js` + supporting CSS: live
+  self-updating timestamps, an activity-type filter, and a dismiss
+  button on stale roster cards wired to the new `DELETE` route above.
+- `frontend/js/projects.js`: on top of this session's own FAB/search/
+  ToS-link work (confirmed present, byte-for-byte, in Replit's copy —
+  not lost, not reconstructed from memory), two additions: the
+  token-reveal modal now auto-navigates into the new project once
+  dismissed, and a global `n` keyboard shortcut opens the create
+  modal (input-focus-guarded, self-removing on unmount).
+
+**Deliberately kept this lane's version over Replit's** for: this file
+(1392 vs Replit's 117-line condensed rewrite — full ledger, Rules,
+KFS table), `KNOWN_ISSUES.md` / `IDEAS.md` (absent from Replit's tree
+entirely — confirmed via `git ls-tree`, not just "didn't see them"),
+`backend/middleware/rateLimit.js` (Replit's copy still has the stale
+"mounted in server.js" comment this lane already corrected earlier
+this session), `vercel.json` + root `server.js` (both absent from
+Replit's tree — this is the actual, confirmed root cause of "no
+visible updates": the real app moved to `artifacts/api-server/` with
+no deployment config updated to match, and Vercel's dashboard almost
+certainly still points at the old root layout expecting files that
+no longer exist there), and `package.json`'s fuller metadata
+(name/description/license/`setup-db` script — Replit's is a stripped
+monorepo-member manifest; dependencies were already identical).
+
+**Verification:** every modified file `node --check`'d clean. Re-ran
+this session's jsdom harness against the merged `projects.js` — 19/19
+still pass (the new `onClose`-navigate and `n`-shortcut code paths
+didn't disturb the FAB/search/ToS-link behavior already covered).
+Built a second mocked-Express harness specifically for the merged
+`files.js`'s new `next(err)` pattern, with a real error-handling
+middleware in the test app (not just checking the function runs) —
+confirmed a thrown DB error still resolves in ~70ms with a clean 500
+via the central handler, and the happy path still returns 200.
+
+Force-pushed the merged result to `main` (`a2b741a`'s full 150-commit
+history as the base, so nothing this session or any prior session did
+is gone) only after all of the above — backup branch, full diff
+review, and verification — were already done.
+— Session 3
+
 ### Session 2 — Session Roster + Instructions pages
 **Status: shipped.** `frontend/js/roster.js`, `frontend/js/instructions.js`,
 `frontend/js/activity.js` (shared component), `frontend/css/instructions-roster.css`.

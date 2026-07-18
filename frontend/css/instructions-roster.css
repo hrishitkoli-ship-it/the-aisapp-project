@@ -435,6 +435,54 @@
   margin-right: 4px;
 }
 
+/* ---- Stale session card visual hint ---- */
+
+.aisapp-roster-card--stale {
+  border-color: var(--aisapp-danger);
+  border-style: dashed;
+  opacity: 0.85;
+}
+
+/* ---- Dismiss button on stale roster cards ---- */
+
+.aisapp-roster-dismiss-btn {
+  margin-left: auto;
+  font-size: 0.75rem;
+  padding: 4px 10px;
+  flex-shrink: 0;
+}
+
+/* ---- Activity type filter chips ---- */
+
+.aisapp-activity-filter {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.aisapp-activity-filter-btn {
+  background: var(--aisapp-surface-raised);
+  border: 1px solid var(--aisapp-border);
+  border-radius: 999px;
+  color: var(--aisapp-text-dim);
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.aisapp-activity-filter-btn:hover {
+  color: var(--aisapp-text);
+}
+
+.aisapp-activity-filter-btn.is-active {
+  background: var(--aisapp-accent-dim);
+  color: var(--aisapp-accent);
+  border-color: var(--aisapp-accent-dim);
+}
+
 @media (max-width: 480px) {
   .aisapp-roster-card-row {
     flex-direction: column;

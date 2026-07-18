@@ -80,7 +80,10 @@ if (!TURSO_DATABASE_URL || !TURSO_AUTH_TOKEN) {
 // connect() is synchronous and does no I/O until the first query, per
 // the Serverless SDK docs -- safe to create once at module scope and
 // reuse across requests within the same warm serverless instance.
-const client = connect({ url: TURSO_DATABASE_URL, authToken: TURSO_AUTH_TOKEN });
+// The serverless SDK requires https:// not libsql:// -- convert if needed.
+// Also strip any stray quote characters that may have been copied into the env var.
+const tursoUrl = TURSO_DATABASE_URL.replace(/^libsql:\/\//, 'https://').replace(/['"]/g, '').trim();
+const client = connect({ url: tursoUrl, authToken: TURSO_AUTH_TOKEN });
 
 const PROJECT_SIZE_LIMIT_BYTES = 100 * 1024; // ~100KB per project
 const ACCOUNT_SIZE_LIMIT_BYTES = 5 * 1024 * 1024; // ~5MB whole account
