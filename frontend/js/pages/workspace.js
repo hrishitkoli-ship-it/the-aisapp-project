@@ -462,6 +462,85 @@
     document.body.appendChild(overlay);
   }
 
+  // ----------------------------------------------------------------
+  // Zip download (#12) -- downloads every file in this project as a
+  // .zip. Uses JSZip (loaded from CDN in index.html) so there's no
+  // server-side zip stream to build and no build step needed.
+  //
+  // Design choices:
+  // - Fetches all file content in parallel (Promise.all over the tree
+  //   flat list) rather than serially -- fast for projects with many
+  //   files, and matches #3's parallel-fetch pattern.
+  // - Shows a brief "Preparing zip…" status, then revokes the object
+  //   URL immediately after the click triggers (browser has already
+  //   started the download at that point; revoking immediately is safe
+  //   and avoids leaking a large in-memory Blob URL indefinitely).
+  // - If JSZip isn't loaded (e.g. CDN blocked), falls back to a clear
+  //   error rather than a silent failure.
+  // ----------------------------------------------------------------
+
+  async function downloadAllFilesAsZip() {
+    if (typeof JSZip === 'undefined') {
+      showStatus(state.mountEl, 'JSZip library not loaded — check your network connection and try refreshing.', 'error');
+      return;
+    }
+    if (!state.tree || state.tree.length === 0) {
+      showStatus(state.mountEl, 'No files to download — add some files to this project first.', 'info');
+      return;
+    }
+
+    showStatus(state.mountEl, 'Preparing zip…', 'info');
+
+    // Flatten the tree recursively into a list of file paths
+    function flattenTree(nodes) {
+      const paths = [];
+      for (const node of nodes || []) {
+        if (node.type === 'file') {
+          paths.push(node.path);
+        } else if (node.type === 'directory' && node.children) {
+          paths.push(...flattenTree(node.children));
+        }
+      }
+      return paths;
+    }
+
+    const filePaths = flattenTree(state.tree);
+    if (filePaths.length === 0) {
+      showStatus(state.mountEl, 'No files to download.', 'info');
+      return;
+    }
+
+    try {
+      // Fetch all file contents in parallel
+      const results = await Promise.all(
+        filePaths.map(async (filePath) => {
+          const { body } = await api(state.projectId, `/files/content/${filePath}`);
+          return { filePath, content: body.content || '' };
+        })
+      );
+
+      const zip = new JSZip();
+      for (const { filePath, content } of results) {
+        zip.file(filePath, content);
+      }
+
+      const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `project-${state.projectId.slice(0, 8)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      // Revoke immediately -- browser has already initiated the download
+      URL.revokeObjectURL(url);
+
+      showStatus(state.mountEl, `Downloaded ${results.length} file${results.length === 1 ? '' : 's'} as zip.`, 'info');
+    } catch (err) {
+      showStatus(state.mountEl, `Couldn't create zip: ${err.message}`, 'error');
+    }
+  }
+
   function downloadCurrentFile() {
     if (!state.selectedPath) return;
     const blob = new Blob([state.editorContent], { type: 'text/plain' });
@@ -525,6 +604,11 @@
         'button',
         { class: 'aisapp-btn aisapp-btn--subtle aisapp-icon-row', onclick: loadTree },
         [window.AisappIcons.el('refresh', { size: 16 }), 'Refresh']
+      ),
+      h(
+        'button',
+        { class: 'aisapp-btn aisapp-btn--subtle aisapp-icon-row', onclick: downloadAllFilesAsZip },
+        [window.AisappIcons.el('download', { size: 16 }), 'Download .zip']
       ),
     ]);
     mountEl.appendChild(toolbar);

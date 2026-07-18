@@ -69,13 +69,68 @@
     return body;
   }
 
-  const listProjects = () => api('/');
-  const getProject = (id) => api(`/${id}`);
+  // -------------------------------------------------------------
+  // In-memory project cache (#3)
+  // Avoids refetching the same project on every tab navigation
+  // (router.js calls getProject() to show the header name each time
+  // the hash changes -- without a cache that's one extra network
+  // round-trip on every tab switch, even when nothing has changed).
+  //
+  // TTL is short (30s) so stale names don't stick around long after
+  // a rename. The cache is invalidated explicitly on any write that
+  // could change a project's metadata (regenerate-token, delete).
+  // listProjects() fills the cache as a side effect so a page load
+  // that fetches the list doesn't trigger extra fetches per-card.
+  // -------------------------------------------------------------
+  const PROJECT_CACHE_TTL_MS = 30_000;
+  const projectCache = new Map(); // id -> { data, fetchedAt }
+
+  function cacheGet(id) {
+    const entry = projectCache.get(id);
+    if (!entry) return null;
+    if (Date.now() - entry.fetchedAt > PROJECT_CACHE_TTL_MS) {
+      projectCache.delete(id);
+      return null;
+    }
+    return entry.data;
+  }
+
+  function cacheSet(id, data) {
+    projectCache.set(id, { data, fetchedAt: Date.now() });
+  }
+
+  function cacheInvalidate(id) {
+    if (id) projectCache.delete(id);
+    else projectCache.clear();
+  }
+
+  const listProjects = async () => {
+    const projects = await api('/');
+    // Fill cache as a side effect so getProject() hits cache after a list
+    if (Array.isArray(projects)) {
+      for (const p of projects) cacheSet(p.id, p);
+    }
+    return projects;
+  };
+  const getProject = async (id) => {
+    const cached = cacheGet(id);
+    if (cached) return cached;
+    const project = await api(`/${id}`);
+    if (project && project.id) cacheSet(project.id, project);
+    return project;
+  };
   const createProject = (name, description) =>
     api('/', { method: 'POST', body: JSON.stringify({ name, description }) });
-  const regenerateToken = (id) =>
-    api(`/${id}/regenerate-token`, { method: 'POST' });
-  const deleteProject = (id) => api(`/${id}`, { method: 'DELETE' });
+  const regenerateToken = async (id) => {
+    const result = await api(`/${id}/regenerate-token`, { method: 'POST' });
+    cacheInvalidate(id); // token changed, stale cache would be harmless but tidy to clear
+    return result;
+  };
+  const deleteProject = async (id) => {
+    const result = await api(`/${id}`, { method: 'DELETE' });
+    cacheInvalidate(id);
+    return result;
+  };
 
   // -------------------------------------------------------------
   // Local persistence: which project is "current" on this device.

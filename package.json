@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node backend/server.js",
     "dev": "node --watch backend/server.js",
-    "setup-db": "node scripts/setup-turso-schema.js"
+    "setup-db": "node scripts/setup-turso-schema.js",
+    "generate-skill": "node scripts/generate-skill.js",
+    "vercel-build": "node scripts/generate-skill.js && node scripts/vercel-build-public.js"
   },
   "engines": {
     "node": ">=18.0.0"

@@ -117,6 +117,20 @@
     title.textContent = 'AI Collaborative Hub';
     appHeader.appendChild(title);
 
+    // "Download AI Instructions" (#6) -- links to the auto-generated
+    // SKILL.md so any AI can download the integration guide without
+    // needing the human to paste it manually. Plain <a download> keeps
+    // this dependency-free: no JS fetch, no Blob, just a static file
+    // that the generator keeps in sync with the real routes.
+    const skillLink = document.createElement('a');
+    skillLink.href = '/SKILL.md';
+    skillLink.download = 'aisapp-skill.md';
+    skillLink.className = 'aisapp-theme-toggle';
+    skillLink.setAttribute('aria-label', 'Download AI Instructions (SKILL.md)');
+    skillLink.setAttribute('title', 'Download AI Instructions');
+    skillLink.innerHTML = window.AisappIcons.svg('download', { size: 19 });
+    appHeader.appendChild(skillLink);
+
     const settingsBtn = document.createElement('button');
     settingsBtn.className = 'aisapp-theme-toggle';
     settingsBtn.type = 'button';
