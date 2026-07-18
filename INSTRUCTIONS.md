@@ -428,7 +428,21 @@ whoever commits last winning.
   (it reuses the same per-file read route as everything else, so this
   should already be bounded by existing auth, but hasn't been
   adversarially checked).
-- **#13** (optional, last) -- not started.
+- **#13** ✅ **SHIPPED** (`591470a`) -- PAT-only, not OAuth (needs an
+  external GitHub App registration this environment can't do --
+  scoped down explicitly, not silently skipped; see the route file's
+  header for the full reasoning). Git Data API for one atomic commit
+  per push. Known, documented, unfixed limitation: can't decrypt
+  files written with the optional per-agent content encryption before
+  pushing (server never holds that key by design -- confirmed by
+  reading, not assumed). Untestable end-to-end from this sandbox: no
+  local-mode Turso client available, and testing against the human's
+  real PAT/repo without being asked would mean writing real commits
+  they didn't request. Verified everything that could be verified
+  without those: crypto round-trip + tamper detection + missing-key
+  error, request-shaping against the live GitHub API (invalid-token
+  401, unauthenticated public-repo 200), tree-flattening logic,
+  token-never-leaks in every response shape.
 
 ### Session 4 (security / hardening / compliance + review)
 - **#16** ✅ **SHIPPED** -- Terms & Privacy acceptance now genuinely
@@ -1418,6 +1432,41 @@ logged — not just that the DOM updated.
   adversarial check, not just a code-read confirmation -- same
   standard this file has held other "should be fine" claims to.
 - Did not touch #13 (optional, explicitly last in ship order).
+
+**Follow-up 3 (#13, `591470a`):**
+- The only remaining item across the whole 16-item sprint, so picked
+  it up rather than stopping at "optional" -- PAT-only (OAuth needs
+  an external app registration, out of reach from here; documented
+  as a deliberate scope cut, not silently dropped).
+- Traced the actual encryption requirement carefully before writing
+  any code: the server needs to DECRYPT the GitHub token itself (to
+  call GitHub's API on push), which is the opposite threat model from
+  contentCrypto.js's client-held key -- reused nothing from that file,
+  wrote a separate module (secretCrypto.js) with its own server-held
+  key from a new env var, and said so explicitly in both files so a
+  future session doesn't conflate the two.
+- Caught and corrected my own first pass mid-build: had reached for
+  scrypt for key derivation, which is a password-hardening KDF built
+  to resist brute-forcing a low-entropy secret -- wrong tool for
+  AISAPP_SECRET_KEY, which is meant to already be high-entropy.
+  Switched to HKDF before shipping.
+- Verified everything testable without live Turso creds or the
+  human's real PAT: crypto round-trip, GCM tamper rejection, missing-
+  key 503, request-shaping against the real GitHub API (safe calls
+  only -- invalid token, public unauthenticated lookup, nonexistent
+  repo -- no writes, no real credentials used), token-never-leaks
+  across every response shape including the pre-existing project
+  list/get/regenerate-token endpoints (stripSecret() didn't know
+  about the new nested field until this pass).
+- Found a real, live bug while doing this (not part of #13, but found
+  because #13 added another CDN script and prompted a CSP check):
+  scriptSrc/styleSrc only allowlisted 'self' + one inline-script hash,
+  silently blocking both this session's own JSZip (#12) and Session
+  1's Prism (#10) CDN scripts. Verified the block was real (spun up a
+  standalone helmet+express instance and read the actual response
+  header, not just read the config and assumed) before fixing.
+  Doesn't fix Prism's two inline <script> config blocks in index.html
+  (need their own hash) -- that's Session 1's file.
 
 ### Session 1 — Frontend Core (Workspace + file tree UI)
 **Status: shipped.** `frontend/index.html` (real app shell, replacing
