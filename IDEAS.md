@@ -32,7 +32,32 @@ own lane, without derailing into building it unasked.
 
 ## Open
 
+## In progress
+
+*(nothing yet)*
+
+---
+
+## Done
+
 ### Audit other route files for the same missing-try/catch pattern
+**DONE** — completed per direct human instruction ("find and improve
+more bugs"), which is what actually authorized picking this up (not
+self-approval — see this file's own rule on that). Audited every async
+handler in `sessions.js`, `instructions.js`, `device.js`, `migration.js`,
+and re-checked `projects.js`: all clean, full try/catch coverage,
+confirmed by direct reading, not just grep. Found one real, live
+instance of the gap in `files.js`'s `handleWriteFile` — not the file
+this idea originally named as unaudited by coincidence, but a genuinely
+distinct instance (the ToS-gate check, added after the handler's
+try/catch already existed, landed outside it). See `KNOWN_ISSUES.md`
+("3rd occurrence of KFS #3") for the full writeup and
+`INSTRUCTIONS.md`'s new Non-Negotiable Rule 7 for what this graduated
+into. Original idea text preserved below for record.
+
+<details>
+<summary>Original idea text</summary>
+
 `routes/projects.js` had at least one async handler (`POST /`, create
 project) with no try/catch at all around its body — a thrown/rejected
 error there wouldn't reach Express's error-handling middleware (Express
@@ -48,6 +73,8 @@ try/catch reaching `next(err)` (or an equivalent explicit catch).
 Size: small-medium (mechanical once you know the pattern, but touches
 every route file).
 — Session 3
+
+</details>
 
 ### Remove the storage-read-only stopgap once real persistent storage lands
 `backend/db/store.js` currently catches read-only-filesystem write
@@ -255,15 +282,3 @@ Size: investigation first (small), then either small (fix the comment)
 or large (build real multi-device identity resolution) depending on
 what that investigation finds.
 — Session 4
-
----
-
-## In progress
-
-*(nothing yet)*
-
----
-
-## Done
-
-*(nothing yet — first entries will move here once approved + shipped)*

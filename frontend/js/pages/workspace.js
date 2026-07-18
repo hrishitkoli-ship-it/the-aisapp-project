@@ -194,6 +194,8 @@
       loadingTree: false,
       loadingFile: false,
       editMode: false, // false = Prism-highlighted read view, true = textarea (#10)
+      wrapEnabled: false,
+      autoSaveTimer: null,
     };
   }
 
@@ -589,6 +591,14 @@
   function renderEditor() {
     const wrap = h('div', { class: 'aisapp-ws-editor' });
 
+    // Dirty badge: shown when editorContent differs from savedContent.
+    // Initially hidden (file was just loaded); oninput toggles it.
+    const dirtyBadge = h('span', {
+      class: 'aisapp-ws-dirty-badge',
+      title: 'Unsaved changes',
+      style: 'display:none',
+    });
+
     const header = h('div', { class: 'aisapp-ws-editor-header' }, [
       h(
         'button',
@@ -596,6 +606,7 @@
         [window.AisappIcons.el('chevron-left', { size: 16 }), 'Files']
       ),
       h('span', { class: 'aisapp-ws-editor-path aisapp-mono' }, state.selectedPath),
+      dirtyBadge,
     ]);
     wrap.appendChild(header);
 
@@ -607,14 +618,10 @@
     // ---- Prism syntax highlighting (#10) -------------------------
     // Strategy: show a Prism-highlighted <pre><code> block as the
     // default view. When the user clicks it (or the Edit button), swap
-    // in the textarea. This preserves the gutter+textarea editor as-is
-    // while adding a real highlighted read view for browsing files
-    // without immediately wanting to edit them.
-    //
-    // Prism is loaded via CDN in index.html (autoloader plugin, so it
-    // fetches language grammars on demand). Falls back gracefully to
-    // the plain textarea if Prism isn't available.
-
+    // in the textarea. Prism is loaded via CDN in index.html (autoloader
+    // plugin, so it fetches language grammars on demand). Falls back
+    // gracefully to the plain textarea if Prism isn't available or the
+    // extension isn't recognized.
     const ext = (state.selectedPath || '').split('.').pop().toLowerCase();
     const PRISM_LANG = {
       js: 'javascript', mjs: 'javascript', cjs: 'javascript',
@@ -638,11 +645,12 @@
     }
 
     let editorBody;
+    let textarea = null; // set below only when the editable branch runs; read again further down (status bar) only if present
 
     if (state.editMode || !hasPrism || !prismLang) {
-      // Plain textarea (edit mode, or Prism not loaded, or unknown extension)
-      const textarea = h('textarea', {
-        class: 'aisapp-ws-textarea aisapp-mono',
+      // ---- Editable textarea branch ----
+      textarea = h('textarea', {
+        class: `aisapp-ws-textarea aisapp-mono${state.wrapEnabled ? ' is-wrap' : ''}`,
         spellcheck: 'false',
         autocapitalize: 'off',
         autocorrect: 'off',
@@ -653,14 +661,58 @@
             clear(gutter);
             for (let i = 1; i <= newLineCount; i++) gutter.appendChild(h('div', {}, String(i)));
           }
-          saveBtn.disabled = !hasUnsavedChanges();
+          const dirty = hasUnsavedChanges();
+          saveBtn.disabled = !dirty;
+          dirtyBadge.style.display = dirty ? 'inline-block' : 'none';
+          // Auto-save: commit to the server 3 s after typing stops.
+          clearTimeout(state.autoSaveTimer);
+          if (dirty) {
+            state.autoSaveTimer = setTimeout(() => {
+              if (hasUnsavedChanges()) saveFile({ force: false });
+            }, 3000);
+          }
         },
       });
       textarea.value = state.editorContent;
-      textarea.addEventListener('scroll', () => { gutter.scrollTop = textarea.scrollTop; });
+
+      // Keep the gutter's vertical scroll locked to the textarea's.
+      textarea.addEventListener('scroll', () => {
+        gutter.scrollTop = textarea.scrollTop;
+      });
+
+      // Tab → 2 spaces. Dispatches 'input' so oninput handles gutter /
+      // saveBtn / dirtyBadge / auto-save without duplicating logic here.
+      textarea.addEventListener('keydown', (e) => {
+        if (e.key !== 'Tab') return;
+        e.preventDefault();
+        const { selectionStart: s, selectionEnd: end } = e.target;
+        e.target.value = e.target.value.slice(0, s) + '  ' + e.target.value.slice(end);
+        e.target.selectionStart = e.target.selectionEnd = s + 2;
+        e.target.dispatchEvent(new Event('input'));
+      });
+
+      // Word wrap toggle -- created after textarea so the click handler
+      // can reference textarea directly without forward-ref machinery.
+      // Edit-mode-only: a highlighted read view has no textarea to wrap.
+      const wrapToggle = h(
+        'button',
+        {
+          class: `aisapp-btn aisapp-btn--subtle${state.wrapEnabled ? ' is-active' : ''}`,
+          title: 'Toggle word wrap (long lines)',
+          onclick: () => {
+            state.wrapEnabled = !state.wrapEnabled;
+            textarea.classList.toggle('is-wrap', state.wrapEnabled);
+            wrapToggle.classList.toggle('is-active', state.wrapEnabled);
+            wrapToggle.textContent = state.wrapEnabled ? 'No wrap' : 'Wrap';
+          },
+        },
+        state.wrapEnabled ? 'No wrap' : 'Wrap'
+      );
+      header.appendChild(wrapToggle);
+
       editorBody = h('div', { class: 'aisapp-ws-editor-body' }, [gutter, textarea]);
     } else {
-      // Prism highlighted view (read mode)
+      // ---- Prism highlighted read view branch (#10) ----
       const code = document.createElement('code');
       code.className = `language-${prismLang}`;
       code.textContent = state.editorContent;
@@ -679,25 +731,60 @@
     }
     wrap.appendChild(editorBody);
 
+    const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+
+    // Ln / Col indicator -- only meaningful with an actual input control
+    // (cursor position), so it only exists when the textarea branch
+    // above ran. The Prism read view has no cursor to report.
+    let statusBar = null;
+    if (textarea) {
+      statusBar = h('span', { class: 'aisapp-ws-status-bar' }, 'Ln 1, Col 1');
+      const updateStatusBar = () => {
+        const before = textarea.value.slice(0, textarea.selectionStart);
+        const lines = before.split('\n');
+        statusBar.textContent = `Ln ${lines.length}, Col ${lines[lines.length - 1].length + 1}`;
+      };
+      textarea.addEventListener('click', updateStatusBar);
+      textarea.addEventListener('keyup', updateStatusBar);
+    }
+
+    // Copy file path button -- independent of edit/view mode, always useful.
+    const copyPathBtn = h('button', {
+      class: 'aisapp-btn aisapp-icon-btn',
+      title: 'Copy file path',
+      onclick: () => {
+        navigator.clipboard.writeText(state.selectedPath).then(() => {
+          copyPathBtn.setAttribute('title', 'Copied!');
+          setTimeout(() => copyPathBtn.setAttribute('title', 'Copy file path'), 1500);
+        });
+      },
+    }, window.AisappIcons.el('clipboard', { size: 14 }));
+    header.appendChild(copyPathBtn);
+
+    const saveBtnLabel = h('span', {}, 'Save');
     const saveBtn = h(
       'button',
       {
         class: 'aisapp-btn aisapp-btn--primary',
+        title: `Save file (${isMac ? '⌘S' : 'Ctrl+S'})`,
         onclick: async () => {
           saveBtn.disabled = true;
-          saveBtn.textContent = 'Saving…';
+          saveBtnLabel.textContent = 'Saving\u2026';
+          clearTimeout(state.autoSaveTimer);
           try {
             await saveFile({ force: false });
           } finally {
-            saveBtn.textContent = 'Save';
+            saveBtnLabel.textContent = 'Save';
             saveBtn.disabled = !hasUnsavedChanges();
           }
         },
       },
-      'Save'
+      [saveBtnLabel, '\u00A0', h('kbd', { class: 'aisapp-kbd-hint' }, isMac ? '⌘S' : '⌃S')]
     );
     saveBtn.disabled = !hasUnsavedChanges();
 
+    // Edit/View toggle -- only when a highlighted view actually exists
+    // for this extension; otherwise there's nothing to toggle to/from.
     const canToggleView = hasPrism && !!prismLang;
     const editToggleBtn = canToggleView
       ? h(
@@ -729,6 +816,7 @@
         { class: 'aisapp-btn aisapp-btn--danger aisapp-icon-row', onclick: deleteCurrentFile },
         [window.AisappIcons.el('trash', { size: 16 }), 'Delete']
       ),
+      statusBar,
     ].filter(Boolean));
     wrap.appendChild(actions);
 
@@ -739,9 +827,31 @@
   // Public entry point
   // -------------------------------------------------------------
 
+  // Ctrl/Cmd+S: save the open file from anywhere in the workspace.
+  // Self-cleaning: removes the listener once mountEl leaves the DOM,
+  // so no router lifecycle hook is needed.
+  function onGlobalSave(e) {
+    if (!state || !state.mountEl || !state.mountEl.isConnected) {
+      document.removeEventListener('keydown', onGlobalSave);
+      return;
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key === 's' && state.selectedPath && !state.loadingFile) {
+      e.preventDefault();
+      saveFile({ force: false });
+      return;
+    }
+    // Escape: go back to the file tree when the file is clean.
+    // If there are unsaved changes we leave Escape alone -- the user
+    // must save or explicitly discard before navigating away.
+    if (e.key === 'Escape' && state.selectedPath && !hasUnsavedChanges() && !state.loadingFile) {
+      closeFile();
+    }
+  }
+
   window.AisappWorkspace = {
     mount(mountEl, projectId) {
       state = freshState(projectId, mountEl);
+      document.addEventListener('keydown', onGlobalSave);
       renderShell();
       loadTree();
     },

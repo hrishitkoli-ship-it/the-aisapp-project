@@ -77,6 +77,12 @@ humanRouter.post('/functionalities', async (req, res, next) => {
     const { projectId } = req.params;
     const { name, description } = req.body || {};
     if (!name) return res.status(400).json({ error: '"name" is required.' });
+    if (name.trim().length > 80) {
+      return res.status(400).json({ error: '"name" must be 80 characters or fewer.' });
+    }
+    if ((description || '').trim().length > 500) {
+      return res.status(400).json({ error: '"description" must be 500 characters or fewer.' });
+    }
 
     const data = await store.getInstructions(projectId);
     const entry = { id: nanoid(8), name: name.trim(), description: (description || '').trim(), createdAt: new Date().toISOString(), createdBy: 'human' };
@@ -95,6 +101,14 @@ humanRouter.post('/assignments', async (req, res, next) => {
     const { functionName, sessionId, sessionLabel, reason } = req.body || {};
     if (!functionName || !sessionId) {
       return res.status(400).json({ error: '"functionName" and "sessionId" are required.' });
+    }
+
+    // Verify the target session actually exists -- a dangling assignment
+    // (approved: true, sessionId points to a session that doesn't exist)
+    // is confusing and gives the UI nothing to render against.
+    const sessions = await store.getSessions(projectId);
+    if (!sessions.find((s) => s.id === sessionId)) {
+      return res.status(404).json({ error: `Session "${sessionId}" not found in this project.` });
     }
 
     const data = await store.getInstructions(projectId);
@@ -183,6 +197,12 @@ aiRouter.post('/functionalities', async (req, res, next) => {
     const { projectId } = req.params;
     const { name, description } = req.body || {};
     if (!name) return res.status(400).json({ error: '"name" is required.' });
+    if (name.trim().length > 80) {
+      return res.status(400).json({ error: '"name" must be 80 characters or fewer.' });
+    }
+    if ((description || '').trim().length > 500) {
+      return res.status(400).json({ error: '"description" must be 500 characters or fewer.' });
+    }
 
     const data = await store.getInstructions(projectId);
     const entry = {
@@ -206,6 +226,13 @@ aiRouter.post('/assignments', async (req, res, next) => {
     const { functionName, sessionId, sessionLabel, reason } = req.body || {};
     if (!functionName || !sessionId) {
       return res.status(400).json({ error: '"functionName" and "sessionId" are required.' });
+    }
+
+    // Same session-existence check as the human route -- an AI proposing an
+    // assignment for a session that doesn't exist creates a dangling record.
+    const sessions = await store.getSessions(projectId);
+    if (!sessions.find((s) => s.id === sessionId)) {
+      return res.status(404).json({ error: `Session "${sessionId}" not found in this project.` });
     }
 
     const data = await store.getInstructions(projectId);

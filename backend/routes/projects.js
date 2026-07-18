@@ -63,6 +63,12 @@ router.post('/', humanSensitiveLimiter, requireDeviceSecret, async (req, res, ne
     if (!name || typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ error: 'Project "name" is required.' });
     }
+    if (name.trim().length > 80) {
+      return res.status(400).json({ error: 'Project "name" must be 80 characters or fewer.' });
+    }
+    if ((description || '').trim().length > 280) {
+      return res.status(400).json({ error: 'Project "description" must be 280 characters or fewer.' });
+    }
 
     // TOS GATE (#16): acceptance required before the first project can
     // be created -- not just before the first file write, which is all

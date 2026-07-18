@@ -31,11 +31,31 @@
 
   const DEVICE_API = '/api/device';
 
+  // Read the device write-secret that projects.js stores on first use.
+  // settings.js and projects.js run as separate IIFE modules with no
+  // shared scope, so we read directly from localStorage here rather
+  // than importing -- same trust boundary (same device, same origin),
+  // and this is what projects.js itself stores and reads under this key.
+  function getDeviceSecret() {
+    try {
+      return (
+        localStorage.getItem('aisapp:deviceSecret') ||
+        localStorage.getItem('aihub:deviceSecret') ||
+        null
+      );
+    } catch {
+      return null;
+    }
+  }
+
   async function api(base, path, options = {}) {
-    const res = await fetch(`${base}${path}`, {
-      headers: { 'Content-Type': 'application/json' },
-      ...options,
-    });
+    const secret = getDeviceSecret();
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(secret ? { 'X-Device-Secret': secret } : {}),
+      ...(options.headers || {}),
+    };
+    const res = await fetch(`${base}${path}`, { ...options, headers });
     let body = null;
     try {
       body = await res.json();
@@ -116,10 +136,28 @@
       return section;
     }
 
+    const copyCodeBtn = h(
+      'button',
+      {
+        class: 'aisapp-btn aisapp-btn--subtle aisapp-btn--sm',
+        onclick: async () => {
+          try {
+            await navigator.clipboard.writeText(device.code);
+            copyCodeBtn.textContent = 'Copied!';
+            setTimeout(() => { copyCodeBtn.textContent = 'Copy'; }, 2000);
+          } catch {
+            copyCodeBtn.textContent = 'Select above';
+            setTimeout(() => { copyCodeBtn.textContent = 'Copy'; }, 2000);
+          }
+        },
+      },
+      'Copy'
+    );
     section.appendChild(
       h('div', { class: 'aisapp-settings-device-code' }, [
         h('span', { class: 'aisapp-settings-device-code-label' }, 'Permanent device code'),
         h('code', { class: 'aisapp-settings-device-code-value' }, device.code),
+        copyCodeBtn,
       ])
     );
     if (device.createdAt) {

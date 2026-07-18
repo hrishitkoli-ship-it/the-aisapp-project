@@ -297,7 +297,7 @@
     });
   }
 
-  function showTokenModal({ token, projectName, isRegeneration }) {
+  function showTokenModal({ token, projectName, isRegeneration, onClose }) {
     const overlay = h('div', { class: 'aisapp-modal-overlay' });
 
     const copyBtn = h(
@@ -326,7 +326,10 @@
       'button',
       {
         class: 'aisapp-btn',
-        onclick: () => overlay.remove(),
+        onclick: () => {
+          overlay.remove();
+          if (onClose) onClose();
+        },
       },
       "I've copied it"
     );
@@ -440,7 +443,7 @@
   // Separated from the modal shell so the same form logic is
   // reusable -- previously the form was mounted inline on the page,
   // now it lives inside a modal opened via the FAB (#15). The caller
-  // supplies onCreated(project) and showErr(msg, kind) so error
+  // supplies onCreated(project) and showErr(msg, kind, err) so error
   // display works whether the form is inside a modal or anywhere else.
   // -------------------------------------------------------------
 
@@ -480,7 +483,7 @@
         descInput.value = '';
         onCreated(project);
       } catch (err) {
-        showErr(err.message, 'error');
+        showErr(err.message, 'error', err);
       } finally {
         isSubmitting = false;
         submitBtn.disabled = false;
@@ -808,10 +811,45 @@
             // token -- the two modals can't coexist safely (focus trap,
             // z-index, scroll-lock) so we sequence them.
             close();
-            showTokenModal({ token: project.token, projectName: project.name, isRegeneration: false });
+            // onClose navigates into the project once the human confirms
+            // they've saved the token -- sequenced after dismissal so the
+            // workspace doesn't load behind a still-open token modal.
+            showTokenModal({
+              token: project.token,
+              projectName: project.name,
+              isRegeneration: false,
+              onClose: () => selectProject(project.id),
+            });
             refresh();
           },
-          (msg, kind) => showStatus(statusArea, msg, kind)
+          (msg, kind, err) => {
+            // #16 (ToS gate) can reject creation with a 403 the backend
+            // already phrases as human-readable ("Accept the Terms...on
+            // the Settings page..."), but as plain status text it's a
+            // dead end -- the person still has to find Settings
+            // themselves via the tab bar. Since this modal owns its own
+            // error surface, add a direct link for this one known case
+            // rather than leaving it as read-only text. Keyed off the
+            // response body flag (not the message string) so it doesn't
+            // silently break if the wording changes.
+            showStatus(statusArea, msg, kind);
+            if (err && err.body && err.body.requiresTosAcceptance) {
+              const statusEl = statusArea.querySelector('.aisapp-status');
+              if (statusEl) {
+                statusEl.appendChild(
+                  h(
+                    'a',
+                    {
+                      href: '#/settings',
+                      class: 'aisapp-status-link',
+                      onclick: close,
+                    },
+                    'Go to Settings'
+                  )
+                );
+              }
+            }
+          }
         );
 
         const closeBtn = h('button', {
@@ -850,6 +888,28 @@
         const firstInput = modal.querySelector('input');
         if (firstInput) firstInput.focus();
       }
+
+      // -- Keyboard shortcut: 'n' to open create modal ---------
+      // Self-cleaning: checks mountEl.isConnected on every keydown
+      // so it silently removes itself when the router unmounts this
+      // page, rather than requiring a destroy() lifecycle hook.
+      function onGlobalKeydown(e) {
+        if (!mountEl.isConnected) {
+          document.removeEventListener('keydown', onGlobalKeydown);
+          return;
+        }
+        // Don't hijack keystrokes when the user is typing in an input.
+        if (
+          e.target.tagName === 'INPUT' ||
+          e.target.tagName === 'TEXTAREA' ||
+          e.target.isContentEditable
+        ) return;
+        if ((e.key === 'n' || e.key === 'N') && !e.metaKey && !e.ctrlKey && !e.altKey) {
+          e.preventDefault();
+          openCreateModal();
+        }
+      }
+      document.addEventListener('keydown', onGlobalKeydown);
 
       // -- Data loading ----------------------------------------
 
