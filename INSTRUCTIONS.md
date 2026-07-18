@@ -1382,6 +1382,144 @@ is gone) only after all of the above — backup branch, full diff
 review, and verification — were already done.
 — Session 3
 
+**Follow-up (same session): live bug report (screenshots) — FAB
+rendering at inconsistent positions, "Internal server error" on
+project creation. Two real, separate bugs found and fixed; one
+suspected cause investigated at length and NOT confirmed, hardened
+regardless.**
+
+**Bug 1 — migration blob expiry was completely non-functional, plus a
+single-use race.** Found during a general bug-hunt pass (not from the
+live report). `expires_at` is stored as `new Date().toISOString()`
+('...T...Z'); SQLite's `datetime('now')` produces a differently-
+formatted string (space, no ms, no Z). String-comparing them in
+`expires_at > datetime('now')` is lexicographic, and `'T'` (0x54)
+sorts after `' '` (0x20) — so for any expiry on the same UTC calendar
+day as "now" (i.e. always, given a 10-minute TTL), the comparison
+evaluated true regardless of actual time. Confirmed empirically
+against a real local libSQL engine, not just reasoned about: a blob
+5 minutes expired was still returned as valid, every time. Separately,
+the SELECT-then-DELETE was two round-trips, not atomic — concurrent
+requests for the same id could both pass the SELECT before either's
+DELETE landed, violating the single-use guarantee. Fixed by collapsing
+to one atomic `DELETE ... RETURNING`, expiry checked in JS afterward.
+7/7 real-engine checks pass, including a genuine concurrent-call race
+test. Commit `0c1f876`.
+
+**Bug 2 — `aisapp_files.updated_at` written in a format `new Date()`
+parses wrong.** Same root-cause family as Bug 1: written via SQL's
+`datetime('now')`, later parsed by `workspace.js`'s conflict dialog
+via `new Date(conflictBody.lastModifiedAt)`. For a non-standard,
+non-UTC-marked format, `new Date()` falls back to LOCAL-time
+interpretation. Verified directly under `TZ=Asia/Kolkata`: a genuine
+14:33:01 UTC edit displayed as 14:33:01 instead of the correct
+20:03:01 — silently wrong by exactly the browser's UTC offset, for any
+browser not physically in UTC+0. Fixed via
+`strftime('%Y-%m-%dT%H:%M:%fZ','now')`. Checked every other
+`datetime('now')` call site in the codebase: `aisapp_devices.created_at`'s
+default is never actually reached (every INSERT path already provides
+an explicit JS ISO string); `aisapp_migration_blobs.created_at` is
+written but never read anywhere, inert. `aisapp_projects.updated_at`
+(4 UPDATE statements) has the same latent issue but isn't currently
+read by any Date-parsing frontend code — not fixed this pass, added to
+IDEAS.md rather than pre-emptively touching 4 more call sites for a
+bug that isn't live yet. Commit `81e6ee7`.
+
+**Bug 3 — the actual FAB root cause.** `animatePageEnter()` (router.js)
+added `.aisapp-page-enter` to `#app` on every navigation but never
+removed it after the animation finished — only ever reset at the START
+of the next navigation. With `animation-fill-mode: both`, that left
+`#app` carrying an active `transform: translateY(0)` for the entire
+time a person stayed on any page. Any transform value — even a visual
+no-op — makes an element the containing block for its
+`position: fixed` descendants (CSS spec, not a browser quirk). The FAB
+is a child of `#app`, so with `#app` permanently transformed, the FAB
+was never actually viewport-fixed — it rendered `right`/`bottom`
+relative to `#app`'s own box, which shifts with `#app`'s current
+content height. That's the literal mechanism behind "randomly
+teleports to different locations": not random, just dependent on
+content height at the moment of each screenshot. `.aisapp-modal-overlay`
+(the only other `position: fixed` rule in this app, also a descendant
+of `#app`) would have the same issue — not confirmed as a separately-
+reported symptom, but this fix covers it too since it's the root
+cause, not a FAB-specific patch. Fixed via `animationend` +
+`{once:true}`, tied to each animation instance rather than a hardcoded
+timeout duration that could drift out of sync with base.css's `0.18s`
+later. Verified via direct code reading + CSS spec reasoning
+(containing-block creation, fill-mode persistence) — NOT via a live
+browser or jsdom; jsdom doesn't implement real CSS animation
+timing/layout, so it wouldn't have meaningfully tested the part
+actually in question. Commit `7174555`.
+
+Also fixed, lower-confidence contributing factor to the same symptom:
+the service worker was cache-first with a static `CACHE_NAME` nothing
+bumped on deploy, meaning different shell files could be cached from
+different deploys depending on background-refresh timing — with
+several deploys landing in quick succession this session, this alone
+could produce inconsistent-looking behavior across loads even without
+Bug 3. Switched to network-first (matches this file's own stated
+"offline fallback" intent better than cache-first did), bumped
+`CACHE_NAME` v4→v5 to force an immediate clean purge for anyone
+already stuck on stale v4. Commit `5486f19`.
+
+**"Internal server error" on project creation — investigated at
+length, root cause NOT confirmed, best-effort hardening added
+regardless.** Initial hypothesis (this session): the new `#16` ToS
+gate's `hasDeviceAcceptedTos()` hitting a missing `tos_accepted_at`
+column on the live DB (this project's own documented recurring
+failure mode). **This hypothesis doesn't hold up**: `getDevice()` — the
+exact function `hasDeviceAcceptedTos()` calls — is ALSO called by
+`requireDeviceSecret` (via `getOrCreateDeviceSecretHash`), which runs
+BEFORE the ToS check on the same request, and which must have already
+succeeded at least once for the account's existing "Aisapp" project to
+exist at all. If the column were genuinely missing, that earlier call
+would already be failing on every protected request, not just this
+one. Built a real integration test — the actual, unmodified `app.js`
++ `store.js` + real `schema.sql`, via a shim redirecting
+`@tursodatabase/serverless` to a real local libSQL engine
+(`@tursodatabase/database`) — and replayed the exact live flow (fresh
+device → 401 → retry → create → accept ToS → create again) end to end,
+twice: once against this session's code alone, once against the fully
+merged current state. Neither reproduces a 500; the full happy path
+returns clean 401 → 403 → 200 → 201 both times.
+
+While investigating, found the much more likely actual explanation:
+Session 3's merge commit `36eb44f` documents an **external force-push
+from a disconnected tool (Replit Agent)** that landed on `main` around
+the same window, including a version of `settings.js` that "was
+missing X-Device-Secret header entirely -- ToS acceptance itself would
+have 401'd," and a deployment-config mismatch ("app moved to
+artifacts/api-server/ with no deployment config to match") that Session
+3's own commit message ties to "no visible updates." Both would
+plausibly produce exactly the symptom reported, and both were already
+reconciled by Session 3's hybrid-reconcile merge before this entry was
+written. Best honest assessment: very likely already resolved by that
+reconciliation, not by anything in this entry — but not confirmed
+against the live deployment (no network path to `*.vercel.app` from
+this sandbox, same disclosed constraint as every prior entry).
+
+Hardened regardless, zero behavioral change for any currently-working
+case: added `SchemaDriftError` — `translateDbError` now detects
+SQLite's "no such column"/"no such table" errors (verified exact
+message format against a real local engine) and wraps them with a
+clear, actionable message instead of an opaque generic 500. This
+project's own documented recurring failure mode, for any column/table,
+not just the one originally suspected. Commit `0c1f876`.
+
+**If this recurs**: the fastest path to a real answer is the Vercel
+function logs — `app.js`'s global error handler already does
+`console.error('[unhandled error]', err)` before returning the generic
+500, so the actual underlying error is already being captured
+server-side, just not surfaced to whoever hits the bug. Genuinely
+open until someone with dashboard/log access confirms one way or the
+other.
+
+All of the above: commits `0c1f876`, `81e6ee7`, `5486f19`, `7174555`.
+node --check clean on every file touched. Pushed after merging with
+Session 2's concurrent `#13` ledger entry (docs-only, `fec2e63`, no
+file overlap with any of this).
+— Session 4
+
 ### Session 2 — Session Roster + Instructions pages
 **Status: shipped.** `frontend/js/roster.js`, `frontend/js/instructions.js`,
 `frontend/js/activity.js` (shared component), `frontend/css/instructions-roster.css`.
