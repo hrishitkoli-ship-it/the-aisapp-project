@@ -398,24 +398,37 @@ whoever commits last winning.
   defines, not a plain list.
 
 ### Session 2 (backend / data / Turso)
-- **#3** -- Profile the project/workspace fetch. Check for N+1 queries
-  against Turso, missing indexes, redundant roster/activity refetch on
-  every nav. Fix with `Promise.all` for parallel fetches + a simple
-  in-memory cache layer (no SWR/React Query -- there's no React).
-- **#6** -- "Download AI Instructions" button on the home page serving
-  a SKILL.md that teaches any AI (Claude, ChatGPT, Gemini, DeepSeek,
-  future models) this app's API/workflow. Must generate from a single
-  source-of-truth doc and stay in sync automatically -- a script run
-  during `vercel-build` (or as a pre-push check) that regenerates
-  `SKILL.md` from the actual route definitions, not hand-maintained
-  separately. Ties to this session's existing ownership of the
-  API/backend surface being documented.
-- **#12** -- "Download all files" per project -> .zip. JSZip
-  client-side is simplest given no build step; a server-side zip
-  stream is the alternative if project sizes make that impractical --
-  this session's call given they own the size-limit logic already.
-- **#13** (optional, last) -- Connect a GitHub repo per project, push
-  files directly (OAuth or PAT).
+- **#3** ✅ **SHIPPED** (`5005449`) -- Traced the actual N+1: not Turso
+  query fan-out (each `store.js` function is a single round trip, no
+  loop-based sequential queries found) but `getProject()` being
+  refetched on every single hash-nav (including tab switches within
+  the same project) just to show the header label. Fixed with a 30s
+  TTL in-memory cache keyed by project id, invalidated on
+  regenerate-token/delete. `listProjects()` fills the cache as a side
+  effect so opening the list then a project doesn't refetch. Roster/
+  activity's 15s polling deliberately left uncached -- that's live
+  coordination state, caching it would work against the app's actual
+  purpose. `Promise.all` applied where the real parallel-fetch
+  opportunity actually was: #12's per-file zip fetch, below.
+- **#6** ✅ **SHIPPED** (`5005449`) -- `scripts/generate-skill.js`
+  parses live route definitions straight out of `backend/routes/*.js`
+  (string paths and the regex-literal file-content routes both) into
+  `frontend/SKILL.md`. Wired into `npm run vercel-build` so it
+  regenerates on every deploy -- never hand-maintained, can't drift
+  from the real API surface. Download button (reuses the existing
+  header icon-button pattern) added to the home page header next to
+  Settings/theme-toggle.
+- **#12** ✅ **SHIPPED** (`5005449`) -- Zip download button in the
+  workspace toolbar. Flattens the file tree, fetches every file's
+  content in parallel via `Promise.all`, bundles client-side with
+  JSZip (CDN, matches Rule 1 -- no build step). No server-side zip
+  stream needed at current project sizes. Flagging for Session 4 per
+  the standing review note above: worth a pass confirming the zip
+  can't be used to pull file content a token shouldn't have access to
+  (it reuses the same per-file read route as everything else, so this
+  should already be bounded by existing auth, but hasn't been
+  adversarially checked).
+- **#13** (optional, last) -- not started.
 
 ### Session 4 (security / hardening / compliance + review)
 - **#16** ✅ **SHIPPED** -- Terms & Privacy acceptance now genuinely
@@ -1384,6 +1397,27 @@ logged — not just that the DOM updated.
   either way, since no file outside the workspace is touched regardless).
 - Re-read every backend file end to end before touching anything,
   specifically to avoid manufacturing work.
+
+**Follow-up 2 (feature sprint #3/#6/#12, `5005449`):**
+- **#3**: profiled the project/workspace fetch path looking for real
+  N+1 against Turso first (found none -- every `store.js` function is
+  a single round trip) before reaching for a cache. The actual
+  redundancy was `getProject()` re-hitting the network on every
+  hash-nav, including tab switches on the same project, just to
+  render a header label. 30s TTL in-memory cache fixes that;
+  roster/activity's 15s polling deliberately left alone since caching
+  live coordination state would defeat the point of this app.
+- **#6**: `scripts/generate-skill.js` regenerates `frontend/SKILL.md`
+  from live route definitions on every `vercel-build` -- can't drift
+  from hand-maintenance the way a static doc would. Download button
+  lives in the home header.
+- **#12**: zip download in the workspace toolbar, parallel per-file
+  fetch (`Promise.all`) + client-side JSZip, no server zip stream.
+  **Flagged for Session 4**: reuses the existing per-file read route
+  so should already be bounded by current auth, but wants an
+  adversarial check, not just a code-read confirmation -- same
+  standard this file has held other "should be fine" claims to.
+- Did not touch #13 (optional, explicitly last in ship order).
 
 ### Session 1 — Frontend Core (Workspace + file tree UI)
 **Status: shipped.** `frontend/index.html` (real app shell, replacing
