@@ -19,6 +19,41 @@
  * ------------------------------------------------------------------
  */
 
+/* ---- Home hero (#14) ---------------------------------------------
+   Visual hierarchy pass: eyebrow → title → subtitle, using accent-
+   tinted spacing so the home page reads as designed rather than a
+   plain stacked list. Kept to existing --aisapp-* tokens only. */
+
+.aisapp-home-hero {
+  margin: 4px 0 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--aisapp-border);
+}
+
+.aisapp-home-hero .aisapp-eyebrow {
+  color: var(--aisapp-accent);
+  display: block;
+  margin-bottom: 6px;
+}
+
+.aisapp-home-title {
+  font-size: 1.7rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0 0 6px;
+  color: var(--aisapp-text);
+  line-height: 1.15;
+}
+
+.aisapp-home-subtitle {
+  font-size: 0.9rem;
+  color: var(--aisapp-text-dim);
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* Legacy class kept for any other page still using a plain title
+   (e.g. Settings) -- unchanged from before the #14 pass. */
 .aisapp-page-title {
   font-size: 1.4rem;
   font-weight: 600;
@@ -105,7 +140,7 @@
   min-height: 44px;
 }
 
-/* ---- Buttons ---- */
+/* ---- Buttons (#7 transitions, #8 polish) ---- */
 
 .aisapp-btn {
   background: var(--aisapp-surface-raised);
@@ -116,10 +151,30 @@
   font-size: 0.95rem;
   font-family: inherit;
   cursor: pointer;
+  /* Shared transition for all button states -- ease-out feels snappier
+     on press than ease-in-out (responds immediately, slows into rest). */
+  transition:
+    background-color 0.13s ease-out,
+    border-color 0.13s ease-out,
+    color 0.13s ease-out,
+    box-shadow 0.13s ease-out,
+    opacity 0.13s ease-out,
+    transform 0.08s ease-out;
+}
+
+.aisapp-btn:hover:not(:disabled) {
+  background: var(--aisapp-surface);
+  border-color: var(--aisapp-text-dim);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+}
+
+.aisapp-btn:active:not(:disabled) {
+  transform: scale(0.97);
+  box-shadow: none;
 }
 
 .aisapp-btn:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: default;
 }
 
@@ -130,6 +185,12 @@
   font-weight: 600;
 }
 
+.aisapp-btn--primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--aisapp-accent) 85%, #fff);
+  border-color: color-mix(in srgb, var(--aisapp-accent) 85%, #fff);
+  box-shadow: 0 2px 8px rgba(77,141,255,0.35);
+}
+
 .aisapp-btn--danger {
   background: var(--aisapp-danger);
   border-color: var(--aisapp-danger);
@@ -137,12 +198,25 @@
   font-weight: 600;
 }
 
+.aisapp-btn--danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--aisapp-danger) 85%, #fff);
+  border-color: color-mix(in srgb, var(--aisapp-danger) 85%, #fff);
+  box-shadow: 0 2px 8px rgba(255,92,92,0.30);
+}
+
 .aisapp-btn--subtle {
   background: transparent;
-  border-color: var(--aisapp-border);
+  border-color: transparent;
   color: var(--aisapp-text-dim);
   font-size: 0.85rem;
   padding: 8px 12px;
+}
+
+.aisapp-btn--subtle:hover:not(:disabled) {
+  background: var(--aisapp-surface-raised);
+  border-color: var(--aisapp-border);
+  color: var(--aisapp-text);
+  box-shadow: none;
 }
 
 .aisapp-icon-btn {

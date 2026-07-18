@@ -16,7 +16,7 @@
  * ------------------------------------------------------------------
  */
 
-const CACHE_NAME = 'aisapp-shell-v4';
+const CACHE_NAME = 'aisapp-shell-v5';
 
 const SHELL_ASSETS = [
   '/',
@@ -26,14 +26,18 @@ const SHELL_ASSETS = [
   '/css/projects.css',
   '/css/workspace.css',
   '/css/instructions-roster.css',
+  '/css/settings.css',
   '/js/icons.js',
+  '/js/ui.js',
   '/js/theme.js',
   '/js/router.js',
   '/js/projects.js',
   '/js/activity.js',
   '/js/roster.js',
   '/js/instructions.js',
+  '/js/migration.js',
   '/js/pages/workspace.js',
+  '/js/pages/settings.js',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
 ];

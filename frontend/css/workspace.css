@@ -267,3 +267,55 @@
     animation: none;
   }
 }
+
+/* ---- Prism syntax highlighting view (#10) ---- */
+
+/* Override Prism tomorrow theme's background so it matches our surface
+   token rather than being hardcoded black -- keeps it theme-aware. */
+.aisapp-ws-highlighted.token,
+pre.aisapp-ws-highlighted {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+  padding: 10px 12px !important;
+  border-radius: 0 !important;
+  font-family: var(--aisapp-font-mono) !important;
+  font-size: 0.85rem !important;
+  line-height: 1.5 !important;
+  overflow-x: auto;
+  flex: 1;
+  min-width: 0;
+  cursor: text;
+  white-space: pre;
+  tab-size: 2;
+  /* sync scroll height with the gutter */
+  overflow-y: auto;
+}
+
+pre.aisapp-ws-highlighted:hover {
+  outline: 1px dashed var(--aisapp-accent);
+  outline-offset: -1px;
+}
+
+pre.aisapp-ws-highlighted code {
+  background: none !important;
+  padding: 0 !important;
+  font-family: inherit !important;
+  font-size: inherit !important;
+  line-height: inherit !important;
+}
+
+[data-theme='light'] pre.aisapp-ws-highlighted {
+  /* Revert Prism Tomorrow theme (designed for dark) to something
+     legible on a light surface -- Prism's own "prism" theme uses very
+     similar tokens, so we override just the base text/background. */
+  color: var(--aisapp-text) !important;
+}
+
+[data-theme='light'] pre.aisapp-ws-highlighted .token.comment,
+[data-theme='light'] pre.aisapp-ws-highlighted .token.prolog,
+[data-theme='light'] pre.aisapp-ws-highlighted .token.doctype,
+[data-theme='light'] pre.aisapp-ws-highlighted .token.cdata {
+  color: var(--aisapp-text-dim) !important;
+}

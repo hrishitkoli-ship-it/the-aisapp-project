@@ -61,6 +61,48 @@
     plus: '<path d="M12 5v14M5 12h14"/>',
     settings:
       '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="7" cy="17" r="2"/>',
+
+    // ---- Per-extension file type icons (#9) ----------------------
+    // Each variant is the generic file shape + a small type label/glyph
+    // so the tree reads like a real IDE at a glance.
+    'file-js':
+      '<path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v4h4"/><text x="8" y="19" font-size="6" font-family="monospace" fill="currentColor" stroke="none">JS</text>',
+    'file-ts':
+      '<path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v4h4"/><text x="8" y="19" font-size="6" font-family="monospace" fill="currentColor" stroke="none">TS</text>',
+    'file-json':
+      '<path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v4h4"/><text x="6.5" y="19" font-size="5" font-family="monospace" fill="currentColor" stroke="none">{}</text>',
+    'file-md':
+      '<path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v4h4"/><text x="7.5" y="19" font-size="6" font-family="monospace" fill="currentColor" stroke="none">MD</text>',
+    'file-txt':
+      '<path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v4h4"/><path d="M9 13h6M9 16h4" stroke-width="1.5"/>',
+    'file-css':
+      '<path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v4h4"/><text x="6" y="19" font-size="5.5" font-family="monospace" fill="currentColor" stroke="none">CSS</text>',
+    'file-html':
+      '<path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v4h4"/><path d="M8.5 14l-1.5 1.5 1.5 1.5M15.5 14l1.5 1.5-1.5 1.5M11.5 13.5l1 4" stroke-width="1.3"/>',
+    'file-py':
+      '<path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v4h4"/><text x="7.5" y="19" font-size="6" font-family="monospace" fill="currentColor" stroke="none">PY</text>',
+    'file-sh':
+      '<path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v4h4"/><path d="M9 14l2 1.5-2 1.5" stroke-width="1.3"/><path d="M13 17h3" stroke-width="1.3"/>',
+    'file-img':
+      '<path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v4h4"/><rect x="8" y="12" width="8" height="6" rx="1" stroke-width="1.3"/><circle cx="10.5" cy="14" r="1" fill="currentColor" stroke="none"/><path d="M8 18l3-3 2 2 2-2" stroke-width="1.3"/>',
+    'file-zip':
+      '<path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v4h4"/><path d="M11 8v2M13 10v2M11 12v2M13 14v2" stroke-width="1.5"/>',
+  };
+
+  // ---- Extension → icon name map (#9) --------------------------
+  const EXT_ICONS = {
+    js: 'file-js',   mjs: 'file-js',  cjs: 'file-js',
+    ts: 'file-ts',   tsx: 'file-ts',
+    json: 'file-json', jsonc: 'file-json',
+    md: 'file-md',   mdx: 'file-md',
+    txt: 'file-txt', log: 'file-txt', csv: 'file-txt',
+    css: 'file-css', scss: 'file-css',
+    html: 'file-html', htm: 'file-html', xml: 'file-html',
+    py: 'file-py',
+    sh: 'file-sh',   bash: 'file-sh', zsh: 'file-sh',
+    png: 'file-img', jpg: 'file-img', jpeg: 'file-img',
+    gif: 'file-img', webp: 'file-img', ico: 'file-img',
+    zip: 'file-zip', gz: 'file-zip',  tar: 'file-zip',
   };
 
   function svg(name, opts = {}) {
@@ -83,6 +125,17 @@
     return wrapper;
   }
 
-  window.AisappIcons = { svg, el, names: Object.keys(PATHS) };
+  /** Returns the icon name for a given filename (by extension). */
+  function fileIconName(filename) {
+    const ext = (filename || '').split('.').pop().toLowerCase();
+    return EXT_ICONS[ext] || 'file';
+  }
+
+  /** Convenience: get icon element for a file path. */
+  function fileIconEl(filename, opts = {}) {
+    return el(fileIconName(filename), opts);
+  }
+
+  window.AisappIcons = { svg, el, names: Object.keys(PATHS), fileIconName, fileIconEl };
 })();
 

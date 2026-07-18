@@ -248,10 +248,19 @@
   // Main render
   // -------------------------------------------------------------
 
+  function animatePageEnter() {
+    appMount.classList.remove('aisapp-page-enter');
+    // Force reflow so removing and re-adding the class triggers the
+    // animation fresh every time, even on same-route re-renders.
+    void appMount.offsetWidth;
+    appMount.classList.add('aisapp-page-enter');
+  }
+
   function render() {
     const route = parseHash();
     appMain.scrollTop = 0; // reset scroll position on every navigation
     teardownCurrentPage(); // stop whatever was polling on the previous page/project
+    animatePageEnter();
 
     if (route.name === 'settings') {
       hideTabbar();

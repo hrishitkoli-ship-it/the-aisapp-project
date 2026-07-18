@@ -556,14 +556,16 @@
       return;
     }
 
-    for (const project of projects) {
-      listEl.appendChild(
-        renderProjectCard(project, {
-          isCurrent: project.id === currentId,
-          ...callbacks,
-        })
-      );
-    }
+    projects.forEach((project, i) => {
+      const card = renderProjectCard(project, {
+        isCurrent: project.id === currentId,
+        ...callbacks,
+      });
+      // Stagger entrance: each card comes in 40ms after the previous.
+      card.classList.add('aisapp-list-item-enter');
+      card.style.animationDelay = `${i * 40}ms`;
+      listEl.appendChild(card);
+    });
   }
 
   // -------------------------------------------------------------
@@ -661,7 +663,19 @@
       const installHint = renderInstallHint(mountEl);
       if (installHint) mountEl.appendChild(installHint);
 
-      mountEl.appendChild(h('h1', { class: 'aisapp-page-title' }, 'Your projects'));
+      // -- Home hero (#14) --------------------------------------
+      // Visual hierarchy: eyebrow label → title → subtle descriptor.
+      // Uses existing --aisapp-* tokens entirely; no new colours.
+      const hero = h('div', { class: 'aisapp-home-hero' }, [
+        h('span', { class: 'aisapp-eyebrow' }, 'AI Collaborative Hub'),
+        h('h1', { class: 'aisapp-home-title' }, 'Your projects'),
+        h(
+          'p',
+          { class: 'aisapp-home-subtitle' },
+          'Pick a project to open its workspace, or create one below.'
+        ),
+      ]);
+      mountEl.appendChild(hero);
 
       // -- Search bar (#11) ------------------------------------
       // Filters the already-fetched allProjects list client-side so

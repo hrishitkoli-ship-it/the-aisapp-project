@@ -193,6 +193,7 @@
       expectedVersion: null,
       loadingTree: false,
       loadingFile: false,
+      editMode: false, // false = Prism-highlighted read view, true = textarea (#10)
     };
   }
 
@@ -305,7 +306,7 @@
             onclick: () => openFile(node.path),
           },
           [
-            window.AisappIcons.el('file', { className: 'aisapp-tree-icon', size: 15 }),
+            window.AisappIcons.fileIconEl(node.name, { className: 'aisapp-tree-icon', size: 15 }),
             h('span', { class: 'aisapp-tree-name' }, node.name),
           ]
         );
@@ -339,6 +340,7 @@
       const { body } = await api(state.projectId, `/files/content/${path}`);
       state.editorContent = body.content;
       state.originalContent = body.content;
+      state.editMode = false; // start in highlighted view mode
       // The read endpoint doesn't return a version number directly --
       // conflict tracking is keyed off the version returned by the
       // *previous write* to this path. A file that's never been
@@ -602,35 +604,79 @@
       return wrap;
     }
 
+    // ---- Prism syntax highlighting (#10) -------------------------
+    // Strategy: show a Prism-highlighted <pre><code> block as the
+    // default view. When the user clicks it (or the Edit button), swap
+    // in the textarea. This preserves the gutter+textarea editor as-is
+    // while adding a real highlighted read view for browsing files
+    // without immediately wanting to edit them.
+    //
+    // Prism is loaded via CDN in index.html (autoloader plugin, so it
+    // fetches language grammars on demand). Falls back gracefully to
+    // the plain textarea if Prism isn't available.
+
+    const ext = (state.selectedPath || '').split('.').pop().toLowerCase();
+    const PRISM_LANG = {
+      js: 'javascript', mjs: 'javascript', cjs: 'javascript',
+      ts: 'typescript', tsx: 'typescript',
+      json: 'json', jsonc: 'json',
+      md: 'markdown', mdx: 'markdown',
+      css: 'css', scss: 'scss',
+      html: 'html', htm: 'html', xml: 'xml',
+      py: 'python',
+      sh: 'bash', bash: 'bash', zsh: 'bash',
+      sql: 'sql',
+      yaml: 'yaml', yml: 'yaml',
+    };
+    const prismLang = PRISM_LANG[ext];
+    const hasPrism = typeof window.Prism !== 'undefined';
+
     const lineCount = Math.max(state.editorContent.split('\n').length, 1);
     const gutter = h('div', { class: 'aisapp-ws-gutter aisapp-mono' });
     for (let i = 1; i <= lineCount; i++) {
       gutter.appendChild(h('div', {}, String(i)));
     }
 
-    const textarea = h('textarea', {
-      class: 'aisapp-ws-textarea aisapp-mono',
-      spellcheck: 'false',
-      autocapitalize: 'off',
-      autocorrect: 'off',
-      oninput: (e) => {
-        state.editorContent = e.target.value;
-        const newLineCount = Math.max(state.editorContent.split('\n').length, 1);
-        if (newLineCount !== gutter.children.length) {
-          clear(gutter);
-          for (let i = 1; i <= newLineCount; i++) gutter.appendChild(h('div', {}, String(i)));
-        }
-        saveBtn.disabled = !hasUnsavedChanges();
-      },
-    });
-    textarea.value = state.editorContent;
+    let editorBody;
 
-    // Keep the gutter's vertical scroll locked to the textarea's.
-    textarea.addEventListener('scroll', () => {
-      gutter.scrollTop = textarea.scrollTop;
-    });
+    if (state.editMode || !hasPrism || !prismLang) {
+      // Plain textarea (edit mode, or Prism not loaded, or unknown extension)
+      const textarea = h('textarea', {
+        class: 'aisapp-ws-textarea aisapp-mono',
+        spellcheck: 'false',
+        autocapitalize: 'off',
+        autocorrect: 'off',
+        oninput: (e) => {
+          state.editorContent = e.target.value;
+          const newLineCount = Math.max(state.editorContent.split('\n').length, 1);
+          if (newLineCount !== gutter.children.length) {
+            clear(gutter);
+            for (let i = 1; i <= newLineCount; i++) gutter.appendChild(h('div', {}, String(i)));
+          }
+          saveBtn.disabled = !hasUnsavedChanges();
+        },
+      });
+      textarea.value = state.editorContent;
+      textarea.addEventListener('scroll', () => { gutter.scrollTop = textarea.scrollTop; });
+      editorBody = h('div', { class: 'aisapp-ws-editor-body' }, [gutter, textarea]);
+    } else {
+      // Prism highlighted view (read mode)
+      const code = document.createElement('code');
+      code.className = `language-${prismLang}`;
+      code.textContent = state.editorContent;
+      window.Prism.highlightElement(code);
 
-    const editorBody = h('div', { class: 'aisapp-ws-editor-body' }, [gutter, textarea]);
+      const pre = document.createElement('pre');
+      pre.className = `aisapp-ws-highlighted language-${prismLang}`;
+      pre.appendChild(code);
+      pre.title = 'Click to edit';
+      pre.addEventListener('click', () => {
+        state.editMode = true;
+        renderShell();
+      });
+      pre.addEventListener('scroll', () => { gutter.scrollTop = pre.scrollTop; });
+      editorBody = h('div', { class: 'aisapp-ws-editor-body' }, [gutter, pre]);
+    }
     wrap.appendChild(editorBody);
 
     const saveBtn = h(
@@ -652,8 +698,27 @@
     );
     saveBtn.disabled = !hasUnsavedChanges();
 
+    const canToggleView = hasPrism && !!prismLang;
+    const editToggleBtn = canToggleView
+      ? h(
+          'button',
+          {
+            class: 'aisapp-btn aisapp-btn--subtle aisapp-icon-row',
+            onclick: () => {
+              state.editMode = !state.editMode;
+              renderShell();
+            },
+          },
+          [
+            window.AisappIcons.el(state.editMode ? 'file' : 'edit', { size: 15 }),
+            state.editMode ? 'View' : 'Edit',
+          ]
+        )
+      : null;
+
     const actions = h('div', { class: 'aisapp-ws-editor-actions' }, [
       saveBtn,
+      editToggleBtn,
       h(
         'button',
         { class: 'aisapp-btn aisapp-icon-row', onclick: downloadCurrentFile },
@@ -664,7 +729,7 @@
         { class: 'aisapp-btn aisapp-btn--danger aisapp-icon-row', onclick: deleteCurrentFile },
         [window.AisappIcons.el('trash', { size: 16 }), 'Delete']
       ),
-    ]);
+    ].filter(Boolean));
     wrap.appendChild(actions);
 
     return wrap;
