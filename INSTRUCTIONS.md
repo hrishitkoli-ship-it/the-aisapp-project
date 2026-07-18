@@ -1454,7 +1454,76 @@ system, plus an unrelated live crash fix found along the way.**
   tested against a sandbox with no real path to `*.turso.io` at all, so
   flagged as "worth checking against a real instance," not confirmed.
 
+**Follow-up 2 (feature sprint #7, #8, #9, #10, #14): transitions, button
+factory, per-extension file icons, Prism syntax highlighting, home
+page design pass.** `#2`/`#4`/`#5` remain open for this lane.
+- **#9**: `icons.js` gained an `EXT_ICONS` extension→icon map plus
+  `fileIconName()`/`fileIconEl()` helpers; the file tree now renders
+  a distinct icon per extension instead of one generic file icon.
+- **#10**: Prism (CDN, autoloader plugin -- zero build step, matching
+  Rule 1) renders a highlighted read-only `<pre>` by default when a
+  file is opened; clicking it (or an Edit/View toggle, shown only when
+  a highlighted view actually exists for that extension) swaps in the
+  textarea. Gutter padding/font-size/line-height matched exactly to
+  the textarea's so toggling doesn't visually jump.
+- **#7**: page-enter animation on every route change, modal open
+  animation, staggered project-card list entrance. `prefers-reduced-
+  motion` respected throughout.
+- **#8**: new `frontend/js/ui.js` -- one `h()`-based button factory
+  (`window.AisappUI.button(label, opts)`) with variant/icon/disabled
+  handling, so new call sites stop hand-assembling the same three
+  lines. Existing `.aisapp-btn` call sites in other files weren't
+  rewritten to use it (five files, four of them other sessions' --
+  bigger and riskier than #8 asked for); the hover/press/transition
+  feel itself lives in `projects.css`'s already-shared `.aisapp-btn`
+  rules, so that part applies everywhere regardless of which helper
+  built a given button.
+- **#14**: home page hero (eyebrow / title / subtitle hierarchy)
+  replacing the flat page title, using only existing `--aisapp-*`
+  tokens.
+- Incidental: `service-worker.js`'s `SHELL_ASSETS` was missing
+  `settings.js`/`settings.css`/`migration.js` from before this
+  session, plus the new `ui.js` -- added all four, bumped cache to v5.
+
+**Reconciling with Session 3/4's concurrent work on the same
+function.** Session 3's auto-save/dirty-badge/word-wrap/status-bar/
+copy-path/kbd-hint work (pushed while this was in progress, after an
+external force-push by "Replit Agent" that Session 3 had to
+hybrid-reconcile -- see their ledger entry) landed in the exact same
+`renderEditor()` block this session restructured for the Prism view
+toggle. `git merge` flagged real conflicts (not the trivial kind);
+resolved by hand-writing one integrated version rather than picking a
+side: word-wrap toggle, tab-handling, and the Ln/Col status bar are
+edit-mode-only (they operate on the textarea, which doesn't exist in
+the Prism read view) and now only render when `state.editMode` is
+true or no highlighted view exists for the extension; the copy-path
+button is mode-independent and always shows. `workspace.css` had a
+second, simpler conflict (both sessions appended new rules at the
+same end-of-file anchor) -- concatenated; also corrected a pre-existing
+typo found while there, `--aisapp-mono-font` (undefined token, silently
+fell back to generic `monospace`) to the real `--aisapp-font-mono`.
+
+Verified before pushing: `node --check` across every JS file in the
+repo (not just touched ones) and a brace-balance sweep across every
+CSS file, both post-merge; a live server boot serving all touched/new
+static assets (200s); `fileIconName()` unit-tested against 13
+extensions; the button factory DOM-tested via a local jsdom install
+(6 assertions: variant classes, icon rendering, icon-only vs.
+icon+label, onClick wiring, disabled state); Prism's exact DOM wiring
+path replicated against a local prismjs install, confirming real
+token spans; and, after the merge, a full click-through of the live
+module tree via jsdom -- open a file (Prism view: highlighted pre
+present, textarea/wrap-toggle/status-bar absent, copy-path present),
+click Edit (textarea appears, wrap-toggle and status-bar appear),
+type (dirty badge shows, save button enables) -- all without a throw.
+Live create-project/write-file/tree API calls are still blocked by
+this sandbox's no-egress-to-`turso.io` limitation (pre-existing,
+confirmed via the 403 in the server log pointing at Turso, not app
+code) -- backend-dependent testing of the file tree/editor against
+real data is unverified here and worth a real-device check.
+
 ### Session 5 — Testing, docs, and integration *(historical — lane retired)*
+
 **Status: shipped, lane closed.** Full route smoke test
 (`SESSION5_TEST_REPORT.md`), conflict-detection end-to-end verification,
 confirmed the AI→approve permission boundary genuinely 404s rather than
