@@ -196,6 +196,7 @@
       editMode: false, // false = Prism-highlighted read view, true = textarea (#10)
       wrapEnabled: false,
       autoSaveTimer: null,
+      github: null, // null = not yet checked; {connected:false} or {connected:true,...} once loaded (#13)
     };
   }
 
@@ -541,6 +542,181 @@
     }
   }
 
+  // ----------------------------------------------------------------
+  // GitHub integration (#13) -- connect a repo, push files. PAT-only,
+  // see backend/routes/githubIntegration.js's header for why (no
+  // OAuth app registration available from this environment) and for
+  // the known limitation around per-agent content encryption.
+  // ----------------------------------------------------------------
+
+  async function loadGithubStatus() {
+    try {
+      const { body } = await api(state.projectId, '/github');
+      state.github = body;
+    } catch {
+      state.github = { connected: false };
+    }
+    // Only re-render the toolbar area, not the whole shell -- avoids
+    // the #4-class bug (full renderShell() tearing down the tree/editor
+    // mid-interaction) for what's just a toolbar label update.
+    rerenderToolbarOnly();
+  }
+
+  function rerenderToolbarOnly() {
+    if (!state.mountEl) return;
+    const oldToolbar = state.mountEl.querySelector('.aisapp-ws-toolbar');
+    if (!oldToolbar) return; // shell not rendered yet, nothing to patch
+    const newToolbar = renderToolbar();
+    oldToolbar.replaceWith(newToolbar);
+  }
+
+  function openGithubModal() {
+    if (document.querySelector('.aisapp-modal-overlay')) return; // one modal at a time, matches projects.js's own guard
+
+    const overlay = h('div', { class: 'aisapp-modal-overlay' });
+
+    function close() {
+      document.removeEventListener('keydown', onEsc);
+      overlay.remove();
+    }
+    function onEsc(e) {
+      if (e.key === 'Escape') close();
+    }
+
+    const ownerInput = h('input', { class: 'aisapp-input', placeholder: 'Owner (e.g. hrishitkoli-ship-it)', autocomplete: 'off', required: 'required' });
+    const repoInput = h('input', { class: 'aisapp-input', placeholder: 'Repo (e.g. the-aisapp-project)', autocomplete: 'off', required: 'required' });
+    const branchInput = h('input', { class: 'aisapp-input', placeholder: 'Branch (default: main)', autocomplete: 'off' });
+    const tokenInput = h('input', { class: 'aisapp-input', placeholder: 'Fine-grained PAT (repo contents: read & write)', type: 'password', autocomplete: 'off', required: 'required' });
+    const errorEl = h('p', { class: 'aisapp-modal-warning', style: 'display:none' });
+    const submitBtn = h('button', { class: 'aisapp-btn aisapp-btn--primary', type: 'submit' }, 'Connect');
+
+    const form = h('form', { class: 'aisapp-create-form' }, [
+      h('p', {}, "This project's files can be pushed to this repo as one commit, any time you choose. The token is encrypted before storage and never shown again after this."),
+      ownerInput,
+      repoInput,
+      branchInput,
+      tokenInput,
+      errorEl,
+      submitBtn,
+    ]);
+
+    let isSubmitting = false;
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (isSubmitting) return;
+      errorEl.style.display = 'none';
+      const owner = ownerInput.value.trim();
+      const repo = repoInput.value.trim();
+      const branch = branchInput.value.trim();
+      const token = tokenInput.value.trim();
+      if (!owner || !repo || !token) {
+        errorEl.textContent = 'Owner, repo, and token are required.';
+        errorEl.style.display = '';
+        return;
+      }
+      isSubmitting = true;
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Connecting…';
+      try {
+        const { body } = await api(state.projectId, '/github/connect', {
+          method: 'POST',
+          body: JSON.stringify({ owner, repo, branch: branch || undefined, token }),
+        });
+        state.github = body;
+        close();
+        rerenderToolbarOnly();
+        showStatus(state.mountEl, `Connected to ${body.owner}/${body.repo}.`, 'info');
+      } catch (err) {
+        errorEl.textContent = err.message;
+        errorEl.style.display = '';
+        isSubmitting = false;
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Connect';
+      }
+    });
+
+    const closeBtn = h('button', { class: 'aisapp-modal-close', 'aria-label': 'Close' });
+    closeBtn.appendChild(window.AisappIcons.el('x-circle', { size: 20 }));
+    closeBtn.addEventListener('click', close);
+
+    const titleId = `aisapp-github-title-${Math.random().toString(36).slice(2, 9)}`;
+    const modal = h(
+      'div',
+      { class: 'aisapp-modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId },
+      [
+        h('div', { class: 'aisapp-modal-header' }, [
+          h('h2', { id: titleId }, 'Connect a GitHub repo'),
+          closeBtn,
+        ]),
+        form,
+      ]
+    );
+
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) close();
+    });
+    document.addEventListener('keydown', onEsc);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    ownerInput.focus();
+  }
+
+  async function pushToGithub() {
+    if (!state.github || !state.github.connected) return;
+    const { owner, repo, branch } = state.github;
+    if (!window.confirm(`Push all files to ${owner}/${repo}${branch ? '@' + branch : ''}? This creates one new commit.`)) {
+      return;
+    }
+    showStatus(state.mountEl, 'Pushing…', 'info');
+    try {
+      const { body } = await api(state.projectId, '/github/push', { method: 'POST' });
+      showStatus(state.mountEl, `Pushed ${body.filesPushed} file${body.filesPushed === 1 ? '' : 's'} (${body.commitSha.slice(0, 7)}).`, 'info');
+      await loadGithubStatus();
+    } catch (err) {
+      showStatus(state.mountEl, `Couldn't push: ${err.message}`, 'error');
+    }
+  }
+
+  async function disconnectGithub() {
+    if (!window.confirm('Disconnect this GitHub repo? You can reconnect later, but the token will need to be entered again.')) {
+      return;
+    }
+    try {
+      await api(state.projectId, '/github', { method: 'DELETE' });
+      state.github = { connected: false };
+      rerenderToolbarOnly();
+      showStatus(state.mountEl, 'Disconnected.', 'info');
+    } catch (err) {
+      showStatus(state.mountEl, `Couldn't disconnect: ${err.message}`, 'error');
+    }
+  }
+
+  function githubToolbarButton() {
+    if (!state.github || !state.github.connected) {
+      return h(
+        'button',
+        { class: 'aisapp-btn aisapp-btn--subtle aisapp-icon-row', onclick: openGithubModal },
+        [window.AisappIcons.el('git-branch', { size: 16 }), 'Connect GitHub']
+      );
+    }
+    // Connected: primary action is Push; a small subtle button next to
+    // it disconnects. Two buttons rather than a dropdown -- this app
+    // has no menu/dropdown component yet, and inventing one for a
+    // two-option choice would be over-building for what this needs.
+    return h('span', { class: 'aisapp-icon-row', style: 'display:inline-flex;gap:6px' }, [
+      h(
+        'button',
+        { class: 'aisapp-btn aisapp-btn--subtle aisapp-icon-row', onclick: pushToGithub, title: `${state.github.owner}/${state.github.repo}` },
+        [window.AisappIcons.el('git-branch', { size: 16 }), 'Push to GitHub']
+      ),
+      h(
+        'button',
+        { class: 'aisapp-btn aisapp-btn--subtle', onclick: disconnectGithub, title: 'Disconnect', 'aria-label': 'Disconnect GitHub' },
+        [window.AisappIcons.el('trash', { size: 14 })]
+      ),
+    ]);
+  }
+
   function downloadCurrentFile() {
     if (!state.selectedPath) return;
     const blob = new Blob([state.editorContent], { type: 'text/plain' });
@@ -590,11 +766,8 @@
   // Top-level render
   // -------------------------------------------------------------
 
-  function renderShell() {
-    const { mountEl } = state;
-    clear(mountEl);
-
-    const toolbar = h('div', { class: 'aisapp-ws-toolbar' }, [
+  function renderToolbar() {
+    return h('div', { class: 'aisapp-ws-toolbar' }, [
       h(
         'button',
         { class: 'aisapp-btn aisapp-btn--subtle aisapp-icon-row', onclick: createNewFile },
@@ -610,7 +783,15 @@
         { class: 'aisapp-btn aisapp-btn--subtle aisapp-icon-row', onclick: downloadAllFilesAsZip },
         [window.AisappIcons.el('download', { size: 16 }), 'Download .zip']
       ),
+      githubToolbarButton(),
     ]);
+  }
+
+  function renderShell() {
+    const { mountEl } = state;
+    clear(mountEl);
+
+    const toolbar = renderToolbar();
     mountEl.appendChild(toolbar);
 
     if (state.selectedPath) {
@@ -938,6 +1119,7 @@
       document.addEventListener('keydown', onGlobalSave);
       renderShell();
       loadTree();
+      loadGithubStatus();
     },
   };
 })();

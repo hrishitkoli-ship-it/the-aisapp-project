@@ -61,6 +61,8 @@
     plus: '<path d="M12 5v14M5 12h14"/>',
     settings:
       '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="7" cy="17" r="2"/>',
+    'git-branch':
+      '<circle cx="6" cy="5" r="2.25"/><circle cx="6" cy="19" r="2.25"/><circle cx="18" cy="8.5" r="2.25"/><path d="M6 7.25V16.75"/><path d="M6 12c0-2.5 2-3.5 5-3.5h3.7"/><path d="M12.5 6l3 2.5-3 2.5"/>',
 
     // ---- Per-extension file type icons (#9) ----------------------
     // Each variant is the generic file shape + a small type label/glyph

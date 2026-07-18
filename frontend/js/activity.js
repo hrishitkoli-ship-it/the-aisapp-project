@@ -91,6 +91,8 @@
     file_write: { icon: 'edit', label: 'File write' },
     file_delete: { icon: 'trash', label: 'File delete' },
     token_regenerated: { icon: 'key', label: 'Token' },
+    github_connected: { icon: 'git-branch', label: 'GitHub' },
+    github_push: { icon: 'git-branch', label: 'GitHub push' },
   };
 
   function metaFor(type) {

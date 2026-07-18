@@ -280,6 +280,17 @@ router.delete('/:projectId', humanSensitiveLimiter, requireDeviceSecret, async (
 /** Never send tokenHash to the client -- it's an internal secret. */
 function stripSecret(project) {
   const { tokenHash, ...rest } = project;
+  // #13's github integration stores an encrypted PAT nested at
+  // project.github.encryptedToken. Every existing call site of this
+  // function (list, get, regenerate-token) returns the raw project
+  // object, so the strip has to happen here too, not just in the new
+  // github route -- otherwise those three endpoints would leak the
+  // ciphertext (not plaintext, but "we never return this, full stop"
+  // is the actual policy here, same as tokenHash above).
+  if (rest.github) {
+    const { encryptedToken, ...githubSafe } = rest.github;
+    rest.github = githubSafe;
+  }
   return rest;
 }
 

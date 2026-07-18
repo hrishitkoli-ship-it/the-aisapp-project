@@ -37,6 +37,7 @@ const sessionsRoutes = require('./routes/sessions');
 const instructionsRoutes = require('./routes/instructions');
 const activityRoutes = require('./routes/activity');
 const filesRoutes = require('./routes/files');
+const githubIntegrationRoutes = require('./routes/githubIntegration');
 const {
   globalBackstopLimiter,
   aiSurfaceLimiter,
@@ -84,11 +85,27 @@ app.use(
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
+        // cdnjs.cloudflare.com added here for JSZip (#12, this
+        // session) and Prism (#10, Session 1) -- both landed as
+        // external <script src="https://cdnjs...">/<link> tags
+        // AFTER this CSP block was written with "no external CDNs...
+        // given this app's actual shape" as its stated rationale.
+        // That rationale is no longer accurate; verified live in a
+        // browser console that both were being silently blocked
+        // (no visible error in this app's own logs -- exactly the
+        // failure mode this file's own header comment warns about
+        // for the inline-script hash below). Note this does NOT fix
+        // Prism's two inline <script> config blocks in index.html --
+        // those need their own sha256 hashes (or a move to an
+        // external file, per this section's existing guidance) and
+        // are Session 1's file to touch; flagged in the ledger
+        // rather than silently expanded into here.
         scriptSrc: [
           "'self'",
           "'sha256-hIoPKioPhemuiPB45DRjfJH/MJvbsoc8NsVWCtCd1j0='", // serviceWorker.register() inline snippet in index.html
+          'https://cdnjs.cloudflare.com',
         ],
-        styleSrc: ["'self'"],
+        styleSrc: ["'self'", 'https://cdnjs.cloudflare.com'], // Prism's stylesheet <link>
         imgSrc: ["'self'", 'data:'], // data: for the PWA icons' any inline favicon/data-uri usage
         connectSrc: ["'self'"],
         objectSrc: ["'none'"],
@@ -131,6 +148,7 @@ app.use('/api/projects/:projectId/sessions', sessionsRoutes.humanRouter);
 app.use('/api/projects/:projectId/instructions', instructionsRoutes.humanRouter);
 app.use('/api/projects/:projectId/activity', activityRoutes.humanRouter);
 app.use('/api/projects/:projectId/files', filesRoutes.humanRouter);
+app.use('/api/projects/:projectId/github', githubIntegrationRoutes.humanRouter);
 
 // ---------------------------------------------------------------------
 // AI-facing routes (token required).
