@@ -94,9 +94,9 @@
   }
 
   function entriesToCsv(entries) {
-    const header = ['id', 'timestamp', 'type', 'actor', 'message'];
+    const header = ['id', 'timestamp', 'type', 'actor', 'message', 'path'];
     const rows = entries.map((e) =>
-      [e.id, e.timestamp, e.type, e.actor, e.message].map(csvField).join(',')
+      [e.id, e.timestamp, e.type, e.actor, e.message, e.path].map(csvField).join(',')
     );
     // \r\n per RFC 4180 -- some spreadsheet importers (older Excel
     // versions especially) are picky about bare \n.
@@ -191,43 +191,6 @@
     return true;
   }
 
-  // -------------------------------------------------------------
-  // CSV export (IDEAS.md: "Export the activity log as CSV") -- pure
-  // client-side, no backend endpoint needed. RFC 4180-ish escaping:
-  // any field containing a comma, quote, or newline gets wrapped in
-  // quotes with internal quotes doubled.
-  // -------------------------------------------------------------
-
-  function escapeCsvField(value) {
-    const s = value == null ? '' : String(value);
-    if (/[",\n\r]/.test(s)) {
-      return '"' + s.replace(/"/g, '""') + '"';
-    }
-    return s;
-  }
-
-  function entriesToCsv(entries) {
-    const header = ['timestamp', 'type', 'actor', 'message', 'path'];
-    const lines = [header.join(',')];
-    for (const e of entries) {
-      lines.push([e.timestamp, e.type, e.actor, e.message, e.path].map(escapeCsvField).join(','));
-    }
-    return lines.join('\r\n');
-  }
-
-  function downloadActivityCsv(entries, projectId) {
-    const csv = entriesToCsv(entries);
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `activity-${projectId}-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  }
-
   /**
    * @param {HTMLElement} mountEl
    * @param {string} projectId
@@ -243,16 +206,6 @@
     let allEntries = [];
     const header = h('div', { class: 'aisapp-activity-header' }, [
       h('h2', { class: 'aisapp-section-title' }, options.title || 'Activity'),
-      h(
-        'button',
-        {
-          class: 'aisapp-icon-btn',
-          title: 'Export as CSV',
-          'aria-label': 'Export activity as CSV',
-          onclick: () => downloadActivityCsv(allEntries.filter((e) => matchesActivityFilter(e, activeFilter)), projectId),
-        },
-        window.AisappIcons.el('download', { size: 16 })
-      ),
       h(
         'button',
         {

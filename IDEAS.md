@@ -291,6 +291,17 @@ commas, embedded double-quotes, and embedded newlines in real message
 text, not just the happy path. See `INSTRUCTIONS.md` Session Ledger /
 commit `4e44830`.
 
+Session 1 built the same feature independently and in parallel (also
+human-approved, in its own conversation, before either session saw the
+other's work) — both landed in the same file with a real function-name
+collision (`entriesToCsv` defined twice; the second silently shadowed
+the first, not a syntax error, so `node --check` wouldn't have caught
+it). Reconciled by keeping this implementation as the single source of
+truth and folding in the one clearly-additive difference from the
+other (a `path` column, most useful context for `file_write`/
+`file_delete` rows) rather than shipping two competing versions or two
+buttons. See Session 1's ledger entry for the reconciliation itself.
+
 Original idea, for record: a "download" button on the activity feed
 that dumps the current `GET /activity` response as CSV, useful once a
 project's been running a while and the human wants to skim history

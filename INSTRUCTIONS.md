@@ -1777,6 +1777,83 @@ confirmed via the 403 in the server log pointing at Turso, not app
 code) -- backend-dependent testing of the file tree/editor against
 real data is unverified here and worth a real-device check.
 
+**Follow-up 3: QOL features, discussed with the human before building
+(per their request), then built after they picked all four from a
+proposed shortlist.**
+
+- **File/folder create + rename.** Create replaced the old
+  `window.prompt()` with (first) a modal, then -- after human feedback
+  that it was "way too complicated" -- a lightweight inline input in
+  the tree panel instead, matching the search bar's visual language:
+  click "New file", type a path, Enter creates it (Escape or the X
+  cancels). No overlay, no header, no explanatory paragraph. Rename
+  reuses the existing read/write/delete content endpoints (read old
+  path, write to new path, delete old path) -- no new backend route.
+  "Renaming a folder" bulk-renames every file under that path prefix,
+  since folders aren't stored rows, just a shared prefix derived from
+  file paths (see `fileOps.js`'s `buildFileTree`).
+- **Recent files quick-jump.** `localStorage`-backed (same mechanism
+  as the device secret), per-project, shown above the tree, filtered
+  against the live tree so a deleted file doesn't show as a dead link.
+- **Full-text file search.** New `GET /files/search` route (mounted on
+  both human and AI routers, matching `/tree` and `/content`'s
+  existing symmetric pattern), server-side SQL `LIKE` with `%`/`_`
+  escaping rather than fetching every file to the client to filter
+  there. Debounced (300 ms), results replace the tree view while a
+  query is active.
+- **Activity log CSV export.** Built independently in parallel with
+  Session 2, who'd also been approved to build the same
+  `IDEAS.md`-listed feature in their own conversation -- neither of us
+  saw the other's work until the next `git merge`, which auto-merged
+  both implementations side by side into `activity.js` with a real
+  function-name collision (`entriesToCsv` defined twice; the second
+  silently shadowed the first, not a syntax error, so `node --check`
+  wouldn't have caught it) and two separate download buttons in the
+  header. Reconciled by keeping Session 2's implementation as the
+  single source of truth (a nicer empty-result guard and a cleaner
+  truncated-project-id filename than mine had) and folding in the one
+  clearly-additive difference from mine: a `path` column, the most
+  useful context for `file_write`/`file_delete` rows. See `IDEAS.md`'s
+  entry for this feature for the same note from that side.
+
+**Row-restructure detail worth knowing if this area gets touched
+again:** adding a per-file rename button meant a tree row could no
+longer be a single `<button>` (a `<button>` can't nest inside a
+`<button>`), so file *and* directory rows became a `<div>` wrapping a
+`.aisapp-tree-row-main` open/toggle button plus a separate
+`.aisapp-tree-row-rename` button. After the "too cramped" feedback,
+file rows were simplified back to a single `<button>` -- rename for
+files now lives in the editor's own action bar (next to
+Download/Delete) instead, since files already have that natural home
+once opened. Directories kept the two-button structure, since a
+folder has no "open" state to hang an action off of. A shared
+`.aisapp-tree-row-clickable` class holds the padding/hover/cursor
+styling used by the tree's main button, the recent-files list, and
+search results, so all three stay visually consistent without
+duplicating the ruleset three times.
+
+Bug caught by the test suite, not by inspection: wiring
+`addRecentFile()` into `openFile()`'s success path accidentally
+deleted the `} catch (err) {` line during editing, leaving the
+error-handling code stranded inside the `try` block. Every
+*successful* file open was firing a bogus "Couldn't open" status and
+clearing `state.selectedPath`, and a real fetch failure would have
+thrown an uncaught `ReferenceError` (`err` undefined) instead of being
+handled. Fixed before it ever reached a commit others would build on.
+
+Verified across this whole arc: `node --check` + a CSS brace-balance
+sweep across the entire repo (not just touched files) after every
+merge; a live server boot confirming the new `/search` route reaches
+the same DB-layer failure point as the existing `/tree` route under
+this sandbox's placeholder Turso credentials (consistent with the
+already-known no-egress-to-`turso.io` limitation, not a wiring bug);
+and three separate jsdom test passes (26, then 9, then 5 assertions)
+covering the tree restructure and its later simplification, directory
+bulk-rename across a nested subfolder, create-collision detection,
+implicit folder creation via a slash in the new-file path, search
+debounce and result click, and the reconciled CSV export's header,
+quoting, and filename.
+
 ### Session 5 — Testing, docs, and integration *(historical — lane retired)*
 
 **Status: shipped, lane closed.** Full route smoke test
