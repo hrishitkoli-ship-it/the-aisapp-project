@@ -566,12 +566,14 @@
         onclick: () => onSelect(project.id),
       },
       [
-        h('div', { class: 'aisapp-project-card-name' }, project.name),
+        h('div', { class: 'aisapp-project-card-header' }, [
+          h('div', { class: 'aisapp-project-card-name' }, project.name),
+          isCurrent ? h('span', { class: 'aisapp-badge' }, 'Current') : null,
+        ]),
         project.description
           ? h('div', { class: 'aisapp-project-card-desc' }, project.description)
           : null,
         h('div', { class: 'aisapp-project-card-meta' }, `Created ${timeAgo(project.createdAt)}`),
-        isCurrent ? h('span', { class: 'aisapp-badge' }, 'Current') : null,
       ]
     );
 
@@ -664,14 +666,27 @@
       return;
     }
 
-    for (const project of filtered) {
-      listEl.appendChild(
-        renderProjectCard(project, {
-          isCurrent: project.id === currentId,
-          ...callbacks,
-        })
+    filtered.forEach((project, i) => {
+      const card = renderProjectCard(project, {
+        isCurrent: project.id === currentId,
+        ...callbacks,
+      });
+      // Stagger entrance, capped so a long list still settles quickly
+      // rather than the last card animating in seconds after the page
+      // loaded. Cleaned up via animationend rather than left permanent
+      // (like router.js's animatePageEnter had to be fixed to do) --
+      // nothing inside a card needs position:fixed today, but there's
+      // no reason to leave a stale transform sitting on every card
+      // indefinitely for whatever gets added here next.
+      card.classList.add('aisapp-list-item-enter');
+      card.style.animationDelay = `${Math.min(i * 40, 400)}ms`;
+      card.addEventListener(
+        'animationend',
+        () => card.classList.remove('aisapp-list-item-enter'),
+        { once: true }
       );
-    }
+      listEl.appendChild(card);
+    });
   }
 
   // -------------------------------------------------------------
@@ -764,7 +779,16 @@
       const installHint = renderInstallHint(mountEl);
       if (installHint) mountEl.appendChild(installHint);
 
-      mountEl.appendChild(h('h1', { class: 'aisapp-page-title' }, 'Your projects'));
+      const hero = h('div', { class: 'aisapp-home-hero' }, [
+        h('span', { class: 'aisapp-eyebrow' }, 'AI Collaborative Hub'),
+        h('h1', { class: 'aisapp-home-title' }, 'Your projects'),
+        h(
+          'p',
+          { class: 'aisapp-home-subtitle' },
+          'Pick a project to open its workspace, or create one below.'
+        ),
+      ]);
+      mountEl.appendChild(hero);
 
       let lastFetchedProjects = [];
       let searchQuery = '';

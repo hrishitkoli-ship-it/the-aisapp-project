@@ -26,6 +26,39 @@
   color: var(--aisapp-text);
 }
 
+/* ---- Home hero -----------------------------------------------------
+   Visual hierarchy: eyebrow -> title -> subtitle, using accent-tinted
+   spacing so the home page reads as designed rather than a plain
+   stacked list. Existing --aisapp-* tokens only. ---- */
+
+.aisapp-home-hero {
+  margin: 4px 0 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--aisapp-border);
+}
+
+.aisapp-home-hero .aisapp-eyebrow {
+  color: var(--aisapp-accent);
+  display: block;
+  margin-bottom: 6px;
+}
+
+.aisapp-home-title {
+  font-size: 1.7rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0 0 6px;
+  color: var(--aisapp-text);
+  line-height: 1.15;
+}
+
+.aisapp-home-subtitle {
+  font-size: 0.9rem;
+  color: var(--aisapp-text-dim);
+  margin: 0;
+  line-height: 1.4;
+}
+
 /* ---- Install hint ---- */
 
 .aisapp-install-hint {
@@ -195,11 +228,10 @@
   background: var(--aisapp-surface);
   border: 1px solid var(--aisapp-border);
   border-radius: var(--aisapp-radius);
-  padding: 12px 14px;
+  padding: 14px 16px;
   color: var(--aisapp-text);
   font-family: inherit;
   cursor: pointer;
-  position: relative;
   min-width: 0; /* allow text truncation in flex child */
 }
 
@@ -214,18 +246,28 @@
   background: var(--aisapp-surface-raised);
 }
 
+.aisapp-project-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .aisapp-project-card-name {
   font-weight: 600;
   font-size: 1rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0; /* the badge is a fixed-size flex sibling now, not an
+                   absolute overlay -- this is what lets the name
+                   truncate around it instead of running underneath */
 }
 
 .aisapp-project-card-desc {
   font-size: 0.85rem;
   color: var(--aisapp-text-dim);
-  margin-top: 2px;
+  margin-top: 4px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -234,13 +276,11 @@
 .aisapp-project-card-meta {
   font-size: 0.75rem;
   color: var(--aisapp-text-dim);
-  margin-top: 6px;
+  margin-top: 8px;
 }
 
 .aisapp-badge {
-  position: absolute;
-  top: 10px;
-  right: 12px;
+  flex-shrink: 0;
   background: var(--aisapp-accent);
   color: #fff;
   font-size: 0.7rem;
