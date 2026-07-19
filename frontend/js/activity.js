@@ -75,6 +75,35 @@
   }
 
   // -------------------------------------------------------------
+  // CSV export (IDEAS.md, "Export the activity log as CSV",
+  // Session 2). Pure client-side -- no new backend route, matches
+  // that idea's own scoping. RFC 4180 quoting: any field containing
+  // a comma, double-quote, or newline gets wrapped in double quotes,
+  // with internal double-quotes doubled. Activity `message` text is
+  // free-form (comes from route handlers across the whole app, e.g.
+  // "Pushed 3 files to owner/repo (abc1234)" or a file path with
+  // arbitrary characters) so this isn't a hypothetical case.
+  // -------------------------------------------------------------
+
+  function csvField(value) {
+    const s = value === null || value === undefined ? '' : String(value);
+    if (/[",\n\r]/.test(s)) {
+      return `"${s.replace(/"/g, '""')}"`;
+    }
+    return s;
+  }
+
+  function entriesToCsv(entries) {
+    const header = ['id', 'timestamp', 'type', 'actor', 'message'];
+    const rows = entries.map((e) =>
+      [e.id, e.timestamp, e.type, e.actor, e.message].map(csvField).join(',')
+    );
+    // \r\n per RFC 4180 -- some spreadsheet importers (older Excel
+    // versions especially) are picky about bare \n.
+    return [header.join(','), ...rows].join('\r\n');
+  }
+
+  // -------------------------------------------------------------
   // Icon + label per activity type. Keeps the feed scannable --
   // a human on mobile is glancing at this, not reading prose.
   // security_alert intentionally does NOT go through this map --
@@ -185,6 +214,16 @@
         },
         window.AisappIcons.el('refresh', { size: 16 })
       ),
+      h(
+        'button',
+        {
+          class: 'aisapp-icon-btn',
+          title: 'Download CSV',
+          'aria-label': 'Download activity as CSV',
+          onclick: () => downloadCsv(),
+        },
+        window.AisappIcons.el('download', { size: 16 })
+      ),
     ]);
 
     // Filter chip bar -- lets the human focus on one event class
@@ -269,6 +308,26 @@
       } finally {
         inFlight = false;
       }
+    }
+
+    function downloadCsv() {
+      if (allEntries.length === 0) {
+        // Nothing to export -- silently no-op rather than downloading
+        // a header-only file, matching the zip download's guard in
+        // workspace.js (#12) for the same "nothing here yet" case.
+        return;
+      }
+      const csv = entriesToCsv(allEntries);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const datePart = new Date().toISOString().slice(0, 10);
+      a.href = url;
+      a.download = `activity-${projectId.slice(0, 8)}-${datePart}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
     }
 
     function scheduleNext() {

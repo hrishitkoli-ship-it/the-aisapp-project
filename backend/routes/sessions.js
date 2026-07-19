@@ -72,6 +72,52 @@ humanRouter.delete('/:sessionId', async (req, res, next) => {
   }
 });
 
+// Human-facing: dismiss a single stuck request from a session's
+// taskQueue (IDEAS.md, "Task queue: let a human clear/dismiss a
+// stuck request", Session 2). If an AI session dies mid-task, its
+// request sits `pending` forever with nothing to move it along --
+// this is the human's way to clear it without needing the AI session
+// that would normally PATCH its own status.
+//
+// Deliberately a single-purpose action route (POST .../dismiss, no
+// body) rather than reusing the generic AI-facing PATCH-with-status-
+// in-body shape below. That route's ALLOWED_REQUEST_STATUSES includes
+// transitions ('in_progress', 'done') that represent an AI reporting
+// its OWN progress -- a human claiming a request is "done" on an AI's
+// behalf would be a materially different, riskier action (silently
+// hides a possibly-still-needed task) than a human saying "clear this,
+// it's stuck." Keeping this route unable to express anything but
+// dismissal means a future loosening into a general human status-
+// setter has to be a deliberate, reviewable change, not a one-line
+// accident.
+//
+// Auth: loadProjectForHuman only (applied to the whole humanRouter
+// above), matching the sibling DELETE /:sessionId route directly
+// above -- both are "human clears stale roster state" actions in the
+// same file, same actor, same trust boundary. No additional
+// device-secret gate: that pattern is reserved elsewhere in this app
+// for actions with real external consequences (regenerating a token
+// that invalidates every AI session's credentials, deleting an entire
+// project) -- dismissing one queue entry has no consequence beyond
+// this project's own roster display.
+humanRouter.post('/:sessionId/requests/:requestId/dismiss', async (req, res, next) => {
+  try {
+    const { projectId, sessionId, requestId } = req.params;
+    const sessions = await store.getSessions(projectId);
+    const sessionIdx = sessions.findIndex((s) => s.id === sessionId);
+    if (sessionIdx === -1) return res.status(404).json({ error: 'Session not found.' });
+
+    const reqIdx = sessions[sessionIdx].taskQueue.findIndex((r) => r.id === requestId);
+    if (reqIdx === -1) return res.status(404).json({ error: 'Request not found in queue.' });
+
+    sessions[sessionIdx].taskQueue[reqIdx].status = 'dismissed';
+    await store.saveSessions(projectId, sessions);
+    res.json(sessions[sessionIdx].taskQueue[reqIdx]);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ---------------------------------------------------------------------
 // AI-facing: read + write
 // ---------------------------------------------------------------------

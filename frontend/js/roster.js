@@ -105,7 +105,7 @@
   // request's status text.
   // -------------------------------------------------------------
 
-  function renderTaskQueue(taskQueue) {
+  function renderTaskQueue(taskQueue, sessionId, { onDismissRequest } = {}) {
     if (!taskQueue || taskQueue.length === 0) return null;
 
     const pending = taskQueue.filter((r) => r.status === 'pending');
@@ -138,6 +138,19 @@
               r.priority && r.priority !== 'normal'
                 ? h('span', { class: `aisapp-badge aisapp-badge--priority-${r.priority}` }, r.priority)
                 : null,
+              // Dismiss a stuck request (IDEAS.md, "Task queue: let a
+              // human clear/dismiss a stuck request", Session 2). Only
+              // on pending items -- a done/dismissed entry has nothing
+              // left to clear. onDismissRequest is undefined when no
+              // callback was supplied (defensive default matches this
+              // function's own existing style below).
+              r.status === 'pending' && onDismissRequest
+                ? h('button', {
+                    class: 'aisapp-btn aisapp-btn--subtle aisapp-roster-queue-dismiss-btn',
+                    title: 'Dismiss this stuck request',
+                    onclick: () => onDismissRequest(sessionId, r.id),
+                  }, 'Dismiss')
+                : null,
             ]
           )
         )
@@ -149,7 +162,7 @@
   // Session card
   // -------------------------------------------------------------
 
-  function renderSessionCard(session, { onDismiss } = {}) {
+  function renderSessionCard(session, { onDismiss, onDismissRequest } = {}) {
     const stale = isStale(session);
     return h('div', { class: `aisapp-roster-card${stale ? ' aisapp-roster-card--stale' : ''}` }, [
       h('div', { class: 'aisapp-roster-card-top' }, [
@@ -176,7 +189,7 @@
         h('span', { class: 'aisapp-roster-card-field' }, 'Current task'),
         h('span', { class: 'aisapp-roster-card-task' }, session.currentTask || 'Idle'),
       ]),
-      renderTaskQueue(session.taskQueue),
+      renderTaskQueue(session.taskQueue, session.id, { onDismissRequest }),
       h('div', { class: 'aisapp-roster-card-meta' }, [
         session.lastSeenAt
           ? h('span', { 'data-ts': session.lastSeenAt, 'data-ts-prefix': 'Last seen' },
@@ -307,6 +320,17 @@
                   await refresh();
                 } catch {
                   // silent -- will recover on next poll
+                }
+              },
+              onDismissRequest: async (sessionId, requestId) => {
+                try {
+                  await fetch(
+                    `/api/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(sessionId)}/requests/${encodeURIComponent(requestId)}/dismiss`,
+                    { method: 'POST' }
+                  );
+                  await refresh();
+                } catch {
+                  // silent -- will recover on next poll, matches onDismiss above
                 }
               },
             }));

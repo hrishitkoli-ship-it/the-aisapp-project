@@ -260,6 +260,13 @@
   min-width: 0;
 }
 
+.aisapp-roster-queue-dismiss-btn {
+  margin-left: auto;
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  flex-shrink: 0;
+}
+
 /* ==================================================================
    Instructions & Functionalities
    ================================================================== */

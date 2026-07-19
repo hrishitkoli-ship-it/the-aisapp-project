@@ -31,6 +31,7 @@ const ROUTE_FILES = [
   { file: 'backend/routes/instructions.js', humanMount: '/api/projects/:projectId/instructions',   aiMount: '/api/ai/:projectId/instructions' },
   { file: 'backend/routes/activity.js',     humanMount: '/api/projects/:projectId/activity',       aiMount: '/api/ai/:projectId/activity' },
   { file: 'backend/routes/files.js',        humanMount: '/api/projects/:projectId/files',          aiMount: '/api/ai/:projectId/files' },
+  { file: 'backend/routes/githubIntegration.js', humanMount: '/api/projects/:projectId/github',    aiMount: null }, // #13, human-only by design -- see that file's own header for why
 ];
 
 // ----------------------------------------------------------------
@@ -59,8 +60,27 @@ function extractFromSrc(src) {
   const results = [];
 
   for (const line of src.split('\n')) {
-    // Match string-path routes: router.get('/foo', ...) or aiRouter.post('/bar', ...)
-    const strMatch = line.match(/\b(router|aiRouter)\.(get|post|patch|put|delete)\s*\(\s*['"`]([^'"`]*)['"`]/i);
+    // Router variable name: matches `router`, `aiRouter`, `humanRouter`,
+    // or any other `*Router` identifier. Classification (isAI, below)
+    // is a separate exact-match check on the captured name, so being
+    // permissive here doesn't risk misclassifying anything.
+    //
+    // BUG FOUND ON RE-VERIFICATION, not caught when this script was
+    // first written: the original pattern was `\b(router|aiRouter)\.`
+    // -- literal-string alternation only. \b is a zero-width boundary
+    // between a \w and a non-\w character; camelCase transitions (the
+    // lowercase-n -> uppercase-R in "humanRouter") are \w on both
+    // sides, so \b never fires there -- `\brouter\b` case-insensitively
+    // never matched the "Router" substring inside "humanRouter". That
+    // meant every route defined on `humanRouter` (sessions.js,
+    // instructions.js, activity.js, files.js, githubIntegration.js --
+    // five of seven route files) was silently missing from the
+    // generated human-facing table since this script's first version,
+    // including this exact session's own new dismiss route. Caught by
+    // reading the generated SKILL.md against the real route files
+    // after adding one more route to check, not by assuming a script
+    // with no error meant correct output.
+    const strMatch = line.match(/\b(\w*[Rr]outer)\.(get|post|patch|put|delete)\s*\(\s*['"`]([^'"`]*)['"`]/);
     if (strMatch) {
       results.push({
         isAI: strMatch[1] === 'aiRouter',
@@ -72,7 +92,7 @@ function extractFromSrc(src) {
 
     // Match regex-path routes: aiRouter.get(/^\/content\/(.*)$/, ...)
     // The source file stores these as /^\\/content\\/(.*)$/ (JS regex literal)
-    const rxMatch = line.match(/\b(router|aiRouter)\.(get|post|patch|put|delete)\s*\(\s*\/(.*?)\/\s*,/);
+    const rxMatch = line.match(/\b(\w*[Rr]outer)\.(get|post|patch|put|delete)\s*\(\s*\/(.*?)\/\s*,/);
     if (rxMatch) {
       results.push({
         isAI: rxMatch[1] === 'aiRouter',
