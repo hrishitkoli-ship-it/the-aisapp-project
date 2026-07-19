@@ -110,15 +110,6 @@ integration ends up structured.
 Size: small (mostly a "check and decide," not new code).
 — Session 3
 
-### Export the activity log as CSV
-A "download" button on the activity feed that dumps the current
-`GET /activity` response as CSV. Small — could live entirely in
-`activity.js` client-side (no new backend route needed, just
-`Array → CSV string → Blob → <a download>`). Useful once a project's
-been running a while and the human wants to skim history off-device.
-Size: small (~1-2 hrs).
-— Session 2
-
 ### Session "last seen" push instead of poll-only
 Right now `roster.js` polls every 15s. An AI session that just
 registered or PATCHed itself could fire a lightweight
@@ -131,17 +122,6 @@ if someone wants to extend it later. Honestly might not be worth the
 complexity for a single-device tool — flagging more as "did we
 consider this" than "we should do this."
 Size: small, but low value — read the reasoning before picking this up.
-— Session 2
-
-### Task queue: let a human clear/dismiss a stuck request
-If an AI session dies mid-task, its `taskQueue` entries stay `pending`
-forever — nothing currently marks them `dismissed`. `roster.js` is
-read-only by design (matches the backend having no human write route
-for sessions), so this would need a new backend route first, which
-is a bigger call than a frontend session should make unilaterally.
-Flagging as an idea rather than building it, since it touches the
-"structural, not just UI" permission model Session 4 was strict about.
-Size: medium (new route + auth-boundary decision, not just UI).
 — Session 2
 
 ### A lightweight "does this route match what store.js actually returns" check, run in CI or pre-commit
@@ -301,3 +281,38 @@ Size: investigation first (small), then either small (fix the comment)
 or large (build real multi-device identity resolution) depending on
 what that investigation finds.
 — Session 4
+
+### Export the activity log as CSV
+**DONE** — human approved directly ("Yes do both"), then shipped.
+Download button next to the refresh icon in the activity header, pure
+client-side (`entriesToCsv()` in `activity.js`, no new backend route,
+as the original idea scoped it). RFC4180 quoting — verified against
+commas, embedded double-quotes, and embedded newlines in real message
+text, not just the happy path. See `INSTRUCTIONS.md` Session Ledger /
+commit `4e44830`.
+
+Original idea, for record: a "download" button on the activity feed
+that dumps the current `GET /activity` response as CSV, useful once a
+project's been running a while and the human wants to skim history
+off-device. Size was estimated small (~1-2 hrs) — held up.
+— Session 2
+
+### Task queue: let a human clear/dismiss a stuck request
+**DONE** — human approved directly ("Yes do both"), then shipped. New
+`humanRouter.post('/:sessionId/requests/:requestId/dismiss')` in
+`sessions.js` — a single-purpose action route rather than exposing the
+AI-facing generic status-PATCH to humans, specifically so a human can't
+be handed a way to mark something "done" on an AI's behalf (a
+materially different, riskier action than clearing a stuck entry).
+Auth matches the sibling `DELETE /:sessionId` route in the same file
+exactly. `roster.js` gained a "Dismiss" button on pending queue items.
+See `INSTRUCTIONS.md` Session Ledger / commit `4e44830`.
+
+Original idea, for record: if an AI session dies mid-task, its
+`taskQueue` entries stay `pending` forever with no way to clear them;
+`roster.js` was read-only by design, so this needed a new backend
+route first — flagged rather than built unilaterally, since it touches
+the "structural, not just UI" permission model Session 4 was strict
+about. Size was estimated medium (new route + auth-boundary decision)
+— held up.
+— Session 2

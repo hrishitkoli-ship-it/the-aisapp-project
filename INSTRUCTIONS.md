@@ -1606,6 +1606,40 @@ logged — not just that the DOM updated.
   Doesn't fix Prism's two inline <script> config blocks in index.html
   (need their own hash) -- that's Session 1's file.
 
+**Follow-up 4 (IDEAS.md: CSV export + dismiss stuck request, `4e44830`):**
+- Human approved both directly ("Yes do both") -- proper authorization
+  per `IDEAS.md`'s own no-self-approval rule, not picked up unasked.
+- CSV export: client-side only, matches the idea's own scoping (no
+  new route). RFC4180 quoting verified against commas, embedded
+  quotes, and embedded newlines in real message text.
+- Dismiss: new single-purpose `POST .../requests/:requestId/dismiss`
+  on `humanRouter`, not a reuse of the AI-facing generic status-PATCH
+  -- deliberately can't express anything but dismissal, so a human
+  being able to mark something "done" on an AI's behalf (a materially
+  different, riskier action) can't happen by accident later. Auth
+  matches the file's own existing `DELETE /:sessionId` pattern exactly.
+- Regenerating `SKILL.md` to include the new route surfaced two real
+  bugs in this session's own earlier #6 work, both fixed same commit:
+  `generate-skill.js`'s router-detection regex matched the literal
+  strings `router`/`aiRouter` only -- `\b` doesn't fire at a camelCase
+  boundary, so every route on `humanRouter` (5 of 7 route files) was
+  silently absent from the generated human-facing table since the
+  script's first version; and `githubIntegration.js` (#13) had never
+  been added to the generator's file list at all, independent of that
+  first bug. Neither affected the app's actual runtime behavior --
+  confined to the doc generator -- but both mean SKILL.md has been
+  materially incomplete since it first shipped, for any AI that
+  downloaded it before this fix. Caught by reading the generated
+  output against the real route files after adding one more route to
+  check, not by trusting a script that ran without error.
+- Moved both `IDEAS.md` entries from their previous position (filed
+  under the `## Done` header without an actual `**DONE**` tag -- a
+  pre-existing small filing inconsistency, not something introduced
+  here) to a proper `**DONE**` entry with what landed, per that file's
+  own stated convention. Left the one other similarly-mis-filed entry
+  ("Remove the storage-read-only stopgap...") alone -- Session 3's
+  item, not mine to reorganize.
+
 ### Session 1 — Frontend Core (Workspace + file tree UI)
 **Status: shipped.** `frontend/index.html` (real app shell, replacing
 Session 3's unblock-only placeholder), `frontend/js/router.js`,
