@@ -200,6 +200,7 @@
       searchQuery: '',
       searchResults: null,
       searchLoading: false,
+      creatingFile: false,
     };
   }
 
@@ -400,33 +401,15 @@
       } else {
         const isSelected = state.selectedPath === node.path;
         const row = h(
-          'div',
+          'button',
           {
-            class: `aisapp-tree-row aisapp-tree-row--file${isSelected ? ' is-selected' : ''}`,
+            class: `aisapp-tree-row aisapp-tree-row-clickable aisapp-tree-row--file${isSelected ? ' is-selected' : ''}`,
             style: `padding-left:${depth * 16 + 10}px`,
+            onclick: () => openFile(node.path),
           },
           [
-            h(
-              'button',
-              { class: 'aisapp-tree-row-clickable aisapp-tree-row-main', onclick: () => openFile(node.path) },
-              [
-                window.AisappIcons.fileIconEl(node.name, { className: 'aisapp-tree-icon', size: 15 }),
-                h('span', { class: 'aisapp-tree-name' }, node.name),
-              ]
-            ),
-            h(
-              'button',
-              {
-                class: 'aisapp-tree-row-rename',
-                title: 'Rename file',
-                'aria-label': `Rename file ${node.name}`,
-                onclick: (e) => {
-                  e.stopPropagation();
-                  openRenameModal(node.path, 'file');
-                },
-              },
-              [window.AisappIcons.el('edit', { size: 13 })]
-            ),
+            window.AisappIcons.fileIconEl(node.name, { className: 'aisapp-tree-icon', size: 15 }),
+            h('span', { class: 'aisapp-tree-name' }, node.name),
           ]
         );
         container.appendChild(row);
@@ -863,83 +846,70 @@
     }
   }
 
-  function openCreateFileModal() {
-    if (document.querySelector('.aisapp-modal-overlay')) return; // one modal at a time, matches the GitHub modal's own guard
+  function startCreatingFile() {
+    state.creatingFile = true;
+    rerenderTreePanelOnly();
+  }
 
-    const overlay = h('div', { class: 'aisapp-modal-overlay' });
-    function close() {
-      document.removeEventListener('keydown', onEsc);
-      overlay.remove();
+  function cancelCreatingFile() {
+    state.creatingFile = false;
+    rerenderTreePanelOnly();
+  }
+
+  async function submitCreateFile(rawPath) {
+    const cleanPath = rawPath.trim().replace(/^\/+/, '');
+    if (!cleanPath) return;
+    if (collectFilePaths(state.tree).includes(cleanPath)) {
+      showStatus(state.mountEl, `"${cleanPath}" already exists.`, 'error');
+      return;
     }
-    function onEsc(e) {
-      if (e.key === 'Escape') close();
+    try {
+      await api(state.projectId, `/files/content/${cleanPath}`, {
+        method: 'PUT',
+        body: JSON.stringify({ content: '' }),
+      });
+      state.creatingFile = false;
+      await loadTree();
+      openFile(cleanPath);
+    } catch (err) {
+      showStatus(state.mountEl, `Couldn't create file: ${err.message}`, 'error');
     }
+  }
 
-    const pathInput = h('input', { class: 'aisapp-input', placeholder: 'e.g. src/utils/helpers.js', autocomplete: 'off', required: 'required' });
-    const errorEl = h('p', { class: 'aisapp-modal-warning', style: 'display:none' });
-    const submitBtn = h('button', { class: 'aisapp-btn aisapp-btn--primary', type: 'submit' }, 'Create');
-
-    const form = h('form', { class: 'aisapp-create-form' }, [
-      h('p', {}, 'Folders in the path are created automatically -- there\u2019s no separate "new folder" step.'),
-      pathInput,
-      errorEl,
-      submitBtn,
-    ]);
-
-    let isSubmitting = false;
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      if (isSubmitting) return;
-      errorEl.style.display = 'none';
-      const cleanPath = pathInput.value.trim().replace(/^\/+/, '');
-      if (!cleanPath) {
-        errorEl.textContent = 'A file path is required.';
-        errorEl.style.display = '';
-        return;
-      }
-      if (collectFilePaths(state.tree).includes(cleanPath)) {
-        errorEl.textContent = `"${cleanPath}" already exists.`;
-        errorEl.style.display = '';
-        return;
-      }
-      isSubmitting = true;
-      submitBtn.disabled = true;
-      submitBtn.textContent = 'Creating\u2026';
-      try {
-        await api(state.projectId, `/files/content/${cleanPath}`, {
-          method: 'PUT',
-          body: JSON.stringify({ content: '' }),
-        });
-        close();
-        await loadTree();
-        openFile(cleanPath);
-      } catch (err) {
-        errorEl.textContent = err.message;
-        errorEl.style.display = '';
-        isSubmitting = false;
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Create';
-      }
+  /** The inline row shown in the tree panel when "New file" is tapped.
+   *  Deliberately not a modal -- a whole overlay/header/paragraph/
+   *  submit-button apparatus was a lot of weight for "type a path,
+   *  press Enter", especially on a small screen. Same visual language
+   *  as the search input right above it in the panel. */
+  function renderCreateFileRow() {
+    const input = h('input', {
+      class: 'aisapp-search-input aisapp-ws-create-input',
+      type: 'text',
+      placeholder: 'path/to/file.js',
+      autocomplete: 'off',
     });
-
-    const closeBtn = h('button', { class: 'aisapp-modal-close', 'aria-label': 'Close' });
-    closeBtn.appendChild(window.AisappIcons.el('x-circle', { size: 20 }));
-    closeBtn.addEventListener('click', close);
-
-    const titleId = `aisapp-newfile-title-${Math.random().toString(36).slice(2, 9)}`;
-    const modal = h(
-      'div',
-      { class: 'aisapp-modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId },
-      [h('div', { class: 'aisapp-modal-header' }, [h('h2', { id: titleId }, 'New file'), closeBtn]), form]
+    const cancelBtn = h(
+      'button',
+      { class: 'aisapp-tree-row-rename', type: 'button', title: 'Cancel', 'aria-label': 'Cancel new file' },
+      [window.AisappIcons.el('x-circle', { size: 15 })]
     );
-
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) close();
+    cancelBtn.addEventListener('click', cancelCreatingFile);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        cancelCreatingFile();
+      }
     });
-    document.addEventListener('keydown', onEsc);
-    overlay.appendChild(modal);
-    document.body.appendChild(overlay);
-    pathInput.focus();
+
+    const form = h('form', { class: 'aisapp-ws-create-row' }, [input, cancelBtn]);
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      submitCreateFile(input.value);
+    });
+
+    // Focus after the element is actually in the DOM.
+    setTimeout(() => input.focus(), 0);
+    return form;
   }
 
   /** Rename = read old content, write it to the new path, delete the
@@ -1090,7 +1060,7 @@
     return h('div', { class: 'aisapp-ws-toolbar' }, [
       h(
         'button',
-        { class: 'aisapp-btn aisapp-btn--subtle aisapp-icon-row', onclick: openCreateFileModal },
+        { class: 'aisapp-btn aisapp-btn--subtle aisapp-icon-row', onclick: startCreatingFile },
         [window.AisappIcons.el('plus', { size: 16 }), 'New file']
       ),
       h(
@@ -1240,6 +1210,10 @@
   function renderTreePanel() {
     const panel = h('div', { class: 'aisapp-panel aisapp-ws-tree-panel' });
     panel.appendChild(renderSearchBar());
+
+    if (state.creatingFile) {
+      panel.appendChild(renderCreateFileRow());
+    }
 
     if (state.searchQuery.trim().length >= 2) {
       panel.appendChild(renderSearchResults());
@@ -1478,6 +1452,14 @@
     const actions = h('div', { class: 'aisapp-ws-editor-actions' }, [
       saveBtn,
       editToggleBtn,
+      h(
+        'button',
+        {
+          class: 'aisapp-btn aisapp-btn--subtle aisapp-icon-row',
+          onclick: () => openRenameModal(state.selectedPath, 'file'),
+        },
+        [window.AisappIcons.el('edit', { size: 15 }), 'Rename']
+      ),
       h(
         'button',
         { class: 'aisapp-btn aisapp-icon-row', onclick: downloadCurrentFile },

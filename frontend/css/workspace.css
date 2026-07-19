@@ -77,8 +77,8 @@
   padding-left: 0;
 }
 
-.aisapp-tree-row--file.is-selected .aisapp-tree-row-main:hover {
-  background: transparent; /* selected state's accent tint wins over hover */
+.aisapp-tree-row--file.is-selected:hover {
+  background: var(--aisapp-accent-dim); /* keep the selected tint; don't let the shared hover rule wash it out */
 }
 
 .aisapp-tree-row-rename {
@@ -487,4 +487,20 @@ pre.aisapp-ws-highlighted code {
   vertical-align: middle;
   color: inherit;
   opacity: 0.75;
+}
+
+/* ---- Inline "new file" row (replaces the old create-file modal --
+   too much weight for "type a path, press Enter", especially on a
+   small screen) ---- */
+
+.aisapp-ws-create-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.aisapp-ws-create-input {
+  flex: 1;
+  min-width: 0;
 }
