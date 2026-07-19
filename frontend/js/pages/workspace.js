@@ -197,7 +197,23 @@
       wrapEnabled: false,
       autoSaveTimer: null,
       github: null, // null = not yet checked; {connected:false} or {connected:true,...} once loaded (#13)
+      searchQuery: '',
+      searchResults: null,
+      searchLoading: false,
     };
+  }
+
+  /** Flat list of every file path in the current tree (no directories).
+   *  Used by rename (to bulk-rename a directory's contents), the
+   *  create/rename collision checks, and recent-files filtering (to
+   *  drop entries for files that no longer exist). */
+  function collectFilePaths(nodes) {
+    let paths = [];
+    for (const node of nodes || []) {
+      if (node.type === 'file') paths.push(node.path);
+      else if (node.children) paths = paths.concat(collectFilePaths(node.children));
+    }
+    return paths;
   }
 
   let state = null;
@@ -257,6 +273,73 @@
   // throughout, not stale ones from before the rebrand.
   // -------------------------------------------------------------
 
+  // -------------------------------------------------------------
+  // Recent files (quick-jump)
+  // -------------------------------------------------------------
+  // Per-project, localStorage-backed (same mechanism projects.js/
+  // settings.js already use for the device secret) -- purely a
+  // navigation convenience, so a localStorage failure (quota, private
+  // browsing) degrades to "no recent list" rather than breaking file
+  // open, which is why every call here is wrapped and swallows errors.
+
+  const RECENT_FILES_MAX = 6;
+
+  function recentFilesKey(projectId) {
+    return `aisapp_recent_files_${projectId}`;
+  }
+
+  function getRecentFiles(projectId) {
+    try {
+      const raw = localStorage.getItem(recentFilesKey(projectId));
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function addRecentFile(projectId, path) {
+    try {
+      const current = getRecentFiles(projectId).filter((p) => p !== path);
+      current.unshift(path);
+      localStorage.setItem(recentFilesKey(projectId), JSON.stringify(current.slice(0, RECENT_FILES_MAX)));
+    } catch {
+      // Non-essential -- fail silently.
+    }
+  }
+
+  function renderRecentFiles() {
+    const known = new Set(collectFilePaths(state.tree));
+    const recent = getRecentFiles(state.projectId).filter((p) => known.has(p) && p !== state.selectedPath);
+    if (recent.length === 0) return null;
+
+    const section = h('div', { class: 'aisapp-ws-recent' });
+    section.appendChild(h('div', { class: 'aisapp-ws-recent-label' }, 'Recent'));
+    for (const path of recent) {
+      const name = path.split('/').pop();
+      section.appendChild(
+        h(
+          'button',
+          {
+            class: 'aisapp-tree-row-clickable aisapp-tree-row--file aisapp-tree-row--recent',
+            onclick: () => openFile(path),
+            title: path,
+          },
+          [
+            window.AisappIcons.fileIconEl(name, { className: 'aisapp-tree-icon', size: 15 }),
+            h('span', { class: 'aisapp-tree-name' }, name),
+          ]
+        )
+      );
+    }
+    return section;
+  }
+
+  // -------------------------------------------------------------
+  // File tree
+  // -------------------------------------------------------------
+
   function rerenderTreePanelOnly() {
     const existing = state.mountEl.querySelector('.aisapp-ws-tree-panel');
     if (!existing) {
@@ -283,16 +366,31 @@
       if (node.type === 'directory') {
         const isOpen = state.expandedDirs.has(node.path);
         const row = h(
-          'button',
-          {
-            class: 'aisapp-tree-row aisapp-tree-row--dir',
-            style: `padding-left:${depth * 16 + 10}px`,
-            onclick: () => toggleDir(node.path),
-          },
+          'div',
+          { class: 'aisapp-tree-row aisapp-tree-row--dir', style: `padding-left:${depth * 16 + 10}px` },
           [
-            h('span', { class: 'aisapp-tree-caret' }, isOpen ? '▾' : '▸'),
-            window.AisappIcons.el('folder', { className: 'aisapp-tree-icon', size: 15 }),
-            h('span', { class: 'aisapp-tree-name' }, node.name),
+            h(
+              'button',
+              { class: 'aisapp-tree-row-clickable aisapp-tree-row-main', onclick: () => toggleDir(node.path) },
+              [
+                h('span', { class: 'aisapp-tree-caret' }, isOpen ? '▾' : '▸'),
+                window.AisappIcons.el('folder', { className: 'aisapp-tree-icon', size: 15 }),
+                h('span', { class: 'aisapp-tree-name' }, node.name),
+              ]
+            ),
+            h(
+              'button',
+              {
+                class: 'aisapp-tree-row-rename',
+                title: 'Rename folder',
+                'aria-label': `Rename folder ${node.name}`,
+                onclick: (e) => {
+                  e.stopPropagation();
+                  openRenameModal(node.path, 'directory');
+                },
+              },
+              [window.AisappIcons.el('edit', { size: 13 })]
+            ),
           ]
         );
         container.appendChild(row);
@@ -302,15 +400,33 @@
       } else {
         const isSelected = state.selectedPath === node.path;
         const row = h(
-          'button',
+          'div',
           {
             class: `aisapp-tree-row aisapp-tree-row--file${isSelected ? ' is-selected' : ''}`,
             style: `padding-left:${depth * 16 + 10}px`,
-            onclick: () => openFile(node.path),
           },
           [
-            window.AisappIcons.fileIconEl(node.name, { className: 'aisapp-tree-icon', size: 15 }),
-            h('span', { class: 'aisapp-tree-name' }, node.name),
+            h(
+              'button',
+              { class: 'aisapp-tree-row-clickable aisapp-tree-row-main', onclick: () => openFile(node.path) },
+              [
+                window.AisappIcons.fileIconEl(node.name, { className: 'aisapp-tree-icon', size: 15 }),
+                h('span', { class: 'aisapp-tree-name' }, node.name),
+              ]
+            ),
+            h(
+              'button',
+              {
+                class: 'aisapp-tree-row-rename',
+                title: 'Rename file',
+                'aria-label': `Rename file ${node.name}`,
+                onclick: (e) => {
+                  e.stopPropagation();
+                  openRenameModal(node.path, 'file');
+                },
+              },
+              [window.AisappIcons.el('edit', { size: 13 })]
+            ),
           ]
         );
         container.appendChild(row);
@@ -352,6 +468,7 @@
       // backend treats as "no conflict check requested." Once we've
       // saved once, we track the version it hands back from then on.
       state.expectedVersion = null;
+      addRecentFile(state.projectId, path);
     } catch (err) {
       showStatus(state.mountEl, `Couldn't open ${path}: ${err.message}`, 'error');
       state.selectedPath = null;
@@ -746,20 +863,223 @@
     }
   }
 
-  async function createNewFile() {
-    const path = window.prompt('New file path (e.g. scripts/new_item.js):');
-    if (!path || !path.trim()) return;
-    const cleanPath = path.trim().replace(/^\/+/, '');
-    try {
-      await api(state.projectId, `/files/content/${cleanPath}`, {
-        method: 'PUT',
-        body: JSON.stringify({ content: '' }),
-      });
-      await loadTree();
-      openFile(cleanPath);
-    } catch (err) {
-      showStatus(state.mountEl, `Couldn't create file: ${err.message}`, 'error');
+  function openCreateFileModal() {
+    if (document.querySelector('.aisapp-modal-overlay')) return; // one modal at a time, matches the GitHub modal's own guard
+
+    const overlay = h('div', { class: 'aisapp-modal-overlay' });
+    function close() {
+      document.removeEventListener('keydown', onEsc);
+      overlay.remove();
     }
+    function onEsc(e) {
+      if (e.key === 'Escape') close();
+    }
+
+    const pathInput = h('input', { class: 'aisapp-input', placeholder: 'e.g. src/utils/helpers.js', autocomplete: 'off', required: 'required' });
+    const errorEl = h('p', { class: 'aisapp-modal-warning', style: 'display:none' });
+    const submitBtn = h('button', { class: 'aisapp-btn aisapp-btn--primary', type: 'submit' }, 'Create');
+
+    const form = h('form', { class: 'aisapp-create-form' }, [
+      h('p', {}, 'Folders in the path are created automatically -- there\u2019s no separate "new folder" step.'),
+      pathInput,
+      errorEl,
+      submitBtn,
+    ]);
+
+    let isSubmitting = false;
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (isSubmitting) return;
+      errorEl.style.display = 'none';
+      const cleanPath = pathInput.value.trim().replace(/^\/+/, '');
+      if (!cleanPath) {
+        errorEl.textContent = 'A file path is required.';
+        errorEl.style.display = '';
+        return;
+      }
+      if (collectFilePaths(state.tree).includes(cleanPath)) {
+        errorEl.textContent = `"${cleanPath}" already exists.`;
+        errorEl.style.display = '';
+        return;
+      }
+      isSubmitting = true;
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Creating\u2026';
+      try {
+        await api(state.projectId, `/files/content/${cleanPath}`, {
+          method: 'PUT',
+          body: JSON.stringify({ content: '' }),
+        });
+        close();
+        await loadTree();
+        openFile(cleanPath);
+      } catch (err) {
+        errorEl.textContent = err.message;
+        errorEl.style.display = '';
+        isSubmitting = false;
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Create';
+      }
+    });
+
+    const closeBtn = h('button', { class: 'aisapp-modal-close', 'aria-label': 'Close' });
+    closeBtn.appendChild(window.AisappIcons.el('x-circle', { size: 20 }));
+    closeBtn.addEventListener('click', close);
+
+    const titleId = `aisapp-newfile-title-${Math.random().toString(36).slice(2, 9)}`;
+    const modal = h(
+      'div',
+      { class: 'aisapp-modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId },
+      [h('div', { class: 'aisapp-modal-header' }, [h('h2', { id: titleId }, 'New file'), closeBtn]), form]
+    );
+
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) close();
+    });
+    document.addEventListener('keydown', onEsc);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    pathInput.focus();
+  }
+
+  /** Rename = read old content, write it to the new path, delete the
+   *  old path. Reuses the three existing content endpoints rather than
+   *  needing a dedicated rename route on the backend. */
+  async function renameSingleFile(oldPath, newPath) {
+    const { body } = await api(state.projectId, `/files/content/${oldPath}`);
+    await api(state.projectId, `/files/content/${newPath}`, {
+      method: 'PUT',
+      body: JSON.stringify({ content: body.content }),
+    });
+    await api(state.projectId, `/files/content/${oldPath}`, { method: 'DELETE' });
+  }
+
+  /** "Renaming a folder" has no direct backend equivalent -- folders
+   *  aren't stored rows, just a shared path prefix derived from the
+   *  files inside them (see fileOps.js's buildFileTree). So this
+   *  renames every file currently under the old prefix to live under
+   *  the new one instead, one renameSingleFile call at a time. Uses
+   *  the already-loaded state.tree for the file list rather than
+   *  re-fetching, to act on exactly what's on screen. */
+  async function renameDirectory(oldPrefix, newPrefix) {
+    const files = collectFilePaths(state.tree).filter(
+      (p) => p === oldPrefix || p.startsWith(oldPrefix + '/')
+    );
+    for (const oldFilePath of files) {
+      const newFilePath = newPrefix + oldFilePath.slice(oldPrefix.length);
+      await renameSingleFile(oldFilePath, newFilePath);
+    }
+  }
+
+  function openRenameModal(oldPath, type) {
+    if (document.querySelector('.aisapp-modal-overlay')) return;
+
+    const overlay = h('div', { class: 'aisapp-modal-overlay' });
+    function close() {
+      document.removeEventListener('keydown', onEsc);
+      overlay.remove();
+    }
+    function onEsc(e) {
+      if (e.key === 'Escape') close();
+    }
+
+    const pathInput = h('input', { class: 'aisapp-input', autocomplete: 'off', required: 'required' });
+    pathInput.value = oldPath;
+    const errorEl = h('p', { class: 'aisapp-modal-warning', style: 'display:none' });
+    const submitBtn = h('button', { class: 'aisapp-btn aisapp-btn--primary', type: 'submit' }, 'Rename');
+
+    const form = h('form', { class: 'aisapp-create-form' }, [
+      h(
+        'p',
+        {},
+        type === 'directory'
+          ? 'Renames every file inside this folder to the new path.'
+          : 'Enter the new path for this file.'
+      ),
+      pathInput,
+      errorEl,
+      submitBtn,
+    ]);
+
+    let isSubmitting = false;
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (isSubmitting) return;
+      errorEl.style.display = 'none';
+      const newPath = pathInput.value.trim().replace(/^\/+/, '');
+      if (!newPath) {
+        errorEl.textContent = 'A path is required.';
+        errorEl.style.display = '';
+        return;
+      }
+      if (newPath === oldPath) {
+        close();
+        return;
+      }
+      if (
+        type === 'file' &&
+        collectFilePaths(state.tree).includes(newPath) &&
+        !window.confirm(`"${newPath}" already exists. Overwrite it?`)
+      ) {
+        return;
+      }
+      isSubmitting = true;
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Renaming\u2026';
+      try {
+        if (type === 'directory') {
+          await renameDirectory(oldPath, newPath);
+        } else {
+          await renameSingleFile(oldPath, newPath);
+        }
+        close();
+        if (state.selectedPath === oldPath) {
+          state.selectedPath = newPath;
+        } else if (state.selectedPath && state.selectedPath.startsWith(oldPath + '/')) {
+          state.selectedPath = newPath + state.selectedPath.slice(oldPath.length);
+        }
+        await loadTree();
+        showStatus(state.mountEl, 'Renamed.', 'info');
+      } catch (err) {
+        errorEl.textContent = err.message;
+        errorEl.style.display = '';
+        isSubmitting = false;
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Rename';
+      }
+    });
+
+    const closeBtn = h('button', { class: 'aisapp-modal-close', 'aria-label': 'Close' });
+    closeBtn.appendChild(window.AisappIcons.el('x-circle', { size: 20 }));
+    closeBtn.addEventListener('click', close);
+
+    const titleId = `aisapp-rename-title-${Math.random().toString(36).slice(2, 9)}`;
+    const modal = h(
+      'div',
+      { class: 'aisapp-modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId },
+      [
+        h('div', { class: 'aisapp-modal-header' }, [
+          h('h2', { id: titleId }, type === 'directory' ? 'Rename folder' : 'Rename file'),
+          closeBtn,
+        ]),
+        form,
+      ]
+    );
+
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) close();
+    });
+    document.addEventListener('keydown', onEsc);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    pathInput.focus();
+    // Select just the filename portion (not the folder path) for
+    // convenience -- matches how most file managers pre-select on rename.
+    const lastSlash = oldPath.lastIndexOf('/');
+    const nameStart = lastSlash === -1 ? 0 : lastSlash + 1;
+    const lastDot = oldPath.lastIndexOf('.');
+    const nameEnd = type === 'file' && lastDot > nameStart ? lastDot : oldPath.length;
+    pathInput.setSelectionRange(nameStart, nameEnd);
   }
 
   // -------------------------------------------------------------
@@ -770,7 +1090,7 @@
     return h('div', { class: 'aisapp-ws-toolbar' }, [
       h(
         'button',
-        { class: 'aisapp-btn aisapp-btn--subtle aisapp-icon-row', onclick: createNewFile },
+        { class: 'aisapp-btn aisapp-btn--subtle aisapp-icon-row', onclick: openCreateFileModal },
         [window.AisappIcons.el('plus', { size: 16 }), 'New file']
       ),
       h(
@@ -839,8 +1159,93 @@
     return wrap;
   }
 
+  // -------------------------------------------------------------
+  // Full-text file search (#10 backend endpoint, this is the UI)
+  // -------------------------------------------------------------
+
+  let searchDebounceTimer = null;
+
+  function renderSearchBar() {
+    const input = h('input', {
+      class: 'aisapp-search-input aisapp-ws-search-input',
+      type: 'search',
+      placeholder: 'Search file contents\u2026',
+      autocomplete: 'off',
+      oninput: (e) => {
+        state.searchQuery = e.target.value;
+        clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = setTimeout(runSearch, 300);
+      },
+    });
+    input.value = state.searchQuery;
+    return h('div', { class: 'aisapp-ws-search-bar' }, [input]);
+  }
+
+  async function runSearch() {
+    const q = state.searchQuery.trim();
+    if (q.length < 2) {
+      state.searchResults = null;
+      state.searchLoading = false;
+      rerenderTreePanelOnly();
+      return;
+    }
+    state.searchLoading = true;
+    rerenderTreePanelOnly();
+    try {
+      const { body } = await api(state.projectId, `/files/search?q=${encodeURIComponent(q)}`);
+      state.searchResults = body.results;
+    } catch (err) {
+      state.searchResults = [];
+      showStatus(state.mountEl, `Search failed: ${err.message}`, 'error');
+    }
+    state.searchLoading = false;
+    rerenderTreePanelOnly();
+  }
+
+  function renderSearchResults() {
+    if (state.searchLoading) {
+      return h('p', { class: 'aisapp-empty-state' }, 'Searching\u2026');
+    }
+    if (!state.searchResults || state.searchResults.length === 0) {
+      return h('p', { class: 'aisapp-empty-state' }, 'No files match.');
+    }
+    const container = h('div', { class: 'aisapp-tree-level' });
+    for (const result of state.searchResults) {
+      const name = result.path.split('/').pop();
+      const body = [h('span', { class: 'aisapp-tree-name' }, result.path)];
+      if (result.snippet) {
+        body.push(h('span', { class: 'aisapp-ws-search-snippet' }, result.snippet));
+      }
+      container.appendChild(
+        h(
+          'button',
+          {
+            class: 'aisapp-tree-row-clickable aisapp-ws-search-result',
+            onclick: () => {
+              state.searchQuery = '';
+              state.searchResults = null;
+              openFile(result.path);
+            },
+          },
+          [
+            window.AisappIcons.fileIconEl(name, { className: 'aisapp-tree-icon', size: 15 }),
+            h('div', { class: 'aisapp-ws-search-result-body' }, body),
+          ]
+        )
+      );
+    }
+    return container;
+  }
+
   function renderTreePanel() {
     const panel = h('div', { class: 'aisapp-panel aisapp-ws-tree-panel' });
+    panel.appendChild(renderSearchBar());
+
+    if (state.searchQuery.trim().length >= 2) {
+      panel.appendChild(renderSearchResults());
+      return panel;
+    }
+
     if (state.loadingTree) {
       panel.appendChild(renderTreeSkeleton());
     } else if (state.tree.length === 0) {
@@ -848,6 +1253,8 @@
         h('p', { class: 'aisapp-empty-state' }, 'No files yet. Create one above, or have an AI session push one.')
       );
     } else {
+      const recent = renderRecentFiles();
+      if (recent) panel.appendChild(recent);
       panel.appendChild(renderTreeNodes(state.tree, 0));
     }
     return panel;

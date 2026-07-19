@@ -266,6 +266,65 @@ async function getFileVersion(projectId, relPath) {
   };
 }
 
+/** Full-text search across every file's content in a project.
+ *  Server-side (SQL LIKE) rather than fetching every file to the
+ *  client to filter there -- buildFileTree's own header comment right
+ *  above documents exactly this same "don't transfer content that
+ *  isn't needed" reasoning for the tree endpoint; a client-side search
+ *  would have to do the thing that fix explicitly avoided, just to
+ *  power a different feature.
+ *
+ *  Case-insensitive substring match. '%'/'_'/'\' in the query are
+ *  escaped so they search literally rather than as SQL wildcards --
+ *  without this, searching for e.g. "user_id" would also match
+ *  "userXid" (the LIKE-wildcard reading of "_"), which isn't what a
+ *  literal content search should do.
+ *
+ *  Returns up to 200 matches (path, snippet, matchCount), most-
+ *  matches-first. 200 is a defensive cap, not a tuned limit -- this
+ *  app's existing per-project size caps (see schema.sql) already bound
+ *  how large a project can get, so it's a backstop against an
+ *  unexpectedly broad query, not something expected to bind in
+ *  practice for normal projects. */
+async function searchFileContents(projectId, query) {
+  const q = (query || '').trim();
+  if (q.length < 2) return [];
+
+  const escaped = q.replace(/[\\%_]/g, (c) => '\\' + c);
+  const pattern = `%${escaped}%`;
+  const result = await store.run(
+    `SELECT path, content FROM aisapp_files
+     WHERE project_id = ? AND content LIKE ? ESCAPE '\\'
+     LIMIT 200`,
+    [projectId, pattern]
+  );
+
+  const needle = q.toLowerCase();
+  return result.rows
+    .map((row) => {
+      const content = row.content || '';
+      const lower = content.toLowerCase();
+      let matchCount = 0;
+      let idx = lower.indexOf(needle);
+      const firstIdx = idx;
+      while (idx !== -1) {
+        matchCount++;
+        idx = lower.indexOf(needle, idx + needle.length);
+      }
+      let snippet = '';
+      if (firstIdx !== -1) {
+        const start = Math.max(0, firstIdx - 40);
+        const end = Math.min(content.length, firstIdx + needle.length + 40);
+        snippet =
+          (start > 0 ? '…' : '') +
+          content.slice(start, end).replace(/\s+/g, ' ').trim() +
+          (end < content.length ? '…' : '');
+      }
+      return { path: row.path, matchCount, snippet };
+    })
+    .sort((a, b) => b.matchCount - a.matchCount);
+}
+
 module.exports = {
   safeNormalize,
   buildFileTree,
@@ -274,5 +333,6 @@ module.exports = {
   stampLastModifiedBy,
   deleteFileOrDir,
   getFileVersion,
+  searchFileContents,
   PathSafetyError,
 };

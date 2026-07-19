@@ -29,10 +29,32 @@
 .aisapp-tree-row {
   display: flex;
   align-items: center;
+  gap: 2px;
+  border-radius: 6px;
+  width: 100%;
+}
+
+.aisapp-tree-row--file.is-selected {
+  background: var(--aisapp-accent-dim);
+  color: var(--aisapp-accent);
+}
+
+/* Shared "clickable row content" look. Split out from .aisapp-tree-row
+   itself because that's now a plain flex container that can hold a
+   SECOND button (rename) beside this one -- see renderTreeNodes' own
+   comment for why nesting a <button> inside a <button> isn't an
+   option. Reused directly (no wrapping .aisapp-tree-row parent) by
+   the recent-files list and search results, which are single buttons
+   with nothing else in the row. */
+.aisapp-tree-row-clickable {
+  display: flex;
+  align-items: center;
   gap: 6px;
+  flex: 1;
+  min-width: 0;
   background: transparent;
   border: none;
-  color: var(--aisapp-text);
+  color: inherit;
   text-align: left;
   padding: 8px 10px;
   font-size: 0.9rem;
@@ -43,14 +65,42 @@
   transition: background-color 0.12s ease, color 0.12s ease;
 }
 
-.aisapp-tree-row:hover,
-.aisapp-tree-row:focus-visible {
+.aisapp-tree-row-clickable:hover,
+.aisapp-tree-row-clickable:focus-visible {
   background: var(--aisapp-surface-raised);
 }
 
-.aisapp-tree-row--file.is-selected {
-  background: var(--aisapp-accent-dim);
-  color: var(--aisapp-accent);
+.aisapp-tree-row-main {
+  /* Indentation is the OUTER .aisapp-tree-row's inline padding-left
+     (depth * 16 + 10, set in JS) -- this inner button starts flush
+     with wherever that already left off. */
+  padding-left: 0;
+}
+
+.aisapp-tree-row--file.is-selected .aisapp-tree-row-main:hover {
+  background: transparent; /* selected state's accent tint wins over hover */
+}
+
+.aisapp-tree-row-rename {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-right: 6px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--aisapp-text-dim);
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.aisapp-tree-row-rename:hover,
+.aisapp-tree-row-rename:focus-visible {
+  background: var(--aisapp-surface-raised);
+  color: var(--aisapp-text);
 }
 
 .aisapp-tree-caret {
@@ -65,6 +115,63 @@
 }
 
 .aisapp-tree-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- Recent files (quick-jump) ---- */
+
+.aisapp-ws-recent {
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--aisapp-border);
+}
+
+.aisapp-ws-recent-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--aisapp-text-dim);
+  padding: 4px 10px;
+}
+
+/* ---- File content search ---- */
+
+.aisapp-ws-search-bar {
+  margin-bottom: 8px;
+}
+
+.aisapp-ws-search-input {
+  width: 100%;
+}
+
+.aisapp-ws-search-result {
+  align-items: flex-start;
+}
+
+.aisapp-ws-search-result .aisapp-tree-icon {
+  margin-top: 2px;
+}
+
+.aisapp-ws-search-result-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.aisapp-ws-search-result-body .aisapp-tree-name {
+  white-space: normal;
+  word-break: break-all;
+}
+
+.aisapp-ws-search-snippet {
+  font-size: 0.78rem;
+  color: var(--aisapp-text-dim);
+  font-family: var(--aisapp-font-mono);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

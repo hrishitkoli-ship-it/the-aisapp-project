@@ -54,6 +54,7 @@ const {
   writeFileContent,
   stampLastModifiedBy,
   deleteFileOrDir,
+  searchFileContents,
   PathSafetyError,
 } = require('../utils/fileOps');
 
@@ -200,6 +201,17 @@ async function handleDeleteFile(req, res, next) {
   }
 }
 
+async function handleSearchFiles(req, res, next) {
+  const { projectId } = req.params;
+  const q = (req.query.q || '').toString();
+  try {
+    const results = await searchFileContents(projectId, q);
+    res.json({ results });
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function logActivity(projectId, entryWithoutId) {
   return store.appendActivity(projectId, { id: nanoid(8), ...entryWithoutId });
 }
@@ -225,6 +237,7 @@ async function logSecurityAlert(req, projectId, attemptedPath, action) {
 
 humanRouter.use(loadProjectForHuman);
 humanRouter.get('/tree', handleListTree);
+humanRouter.get('/search', handleSearchFiles);
 humanRouter.get(/^\/content\/(.*)$/, handleReadFile);
 humanRouter.put(/^\/content\/(.*)$/, handleWriteFile);
 humanRouter.delete(/^\/content\/(.*)$/, handleDeleteFile);
@@ -236,6 +249,7 @@ humanRouter.delete(/^\/content\/(.*)$/, handleDeleteFile);
 aiRouter.use(requireAIToken);
 aiRouter.use(aiWorkLimiter);
 aiRouter.get('/tree', handleListTree);
+aiRouter.get('/search', handleSearchFiles);
 aiRouter.get(/^\/content\/(.*)$/, handleReadFile);
 aiRouter.put(/^\/content\/(.*)$/, handleWriteFile);
 aiRouter.delete(/^\/content\/(.*)$/, handleDeleteFile);
