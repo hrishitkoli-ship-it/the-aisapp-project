@@ -207,9 +207,24 @@ async function writeFileContent(projectId, relPath, content, { expectedVersion, 
   const newVersion = (existing?.version || 0) + 1;
 
   // SQLite/Turso upsert: INSERT ... ON CONFLICT(project_id, path) DO UPDATE.
+  //
+  // CORRECTED (Session 4, same bug-hunt pass that fixed
+  // consumeMigrationBlob's expiry check -- see that function's comment
+  // in store.js for the full root cause): this used to write
+  // `datetime('now')`, which produces SQLite's own format
+  // ('2026-07-17 14:33:01' -- space, no 'Z'). workspace.js's conflict
+  // dialog parses this value via `new Date(conflictBody.lastModifiedAt)`.
+  // For a non-standard, non-UTC-marked format like this, `new Date()`
+  // falls back to LOCAL-time interpretation, not UTC -- so any browser
+  // not physically in UTC+0 sees the wrong "last modified" time, off by
+  // exactly its own UTC offset. Verified directly (not assumed): under
+  // TZ=Asia/Kolkata (UTC+5:30), a genuine 14:33:01 UTC edit displayed as
+  // 14:33:01 instead of the correct 20:03:01. `strftime` with an
+  // explicit 'T'/'Z' format produces a standard ISO-8601 string that
+  // `new Date()` parses as UTC unambiguously, everywhere.
   await store.run(
     `INSERT INTO aisapp_files (project_id, path, content, version, updated_at)
-     VALUES (?, ?, ?, ?, datetime('now'))
+     VALUES (?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
      ON CONFLICT(project_id, path) DO UPDATE SET
        content = excluded.content,
        version = excluded.version,

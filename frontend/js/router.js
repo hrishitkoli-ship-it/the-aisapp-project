@@ -268,6 +268,37 @@
     // animation fresh every time, even on same-route re-renders.
     void appMount.offsetWidth;
     appMount.classList.add('aisapp-page-enter');
+
+    // CORRECTED (Session 4, found via a live bug report -- a FAB
+    // rendering at an inconsistent, shifting position): this class
+    // was never removed after its own animation finished -- only ever
+    // reset at the START of the NEXT call to this function. Combined
+    // with `animation-fill-mode: both` (see base.css), that means
+    // #app carries an active `transform: translateY(0)` for the
+    // entire time a person stays on any page, not just during the
+    // ~180ms transition this function's own name and comment above
+    // describe. ANY transform value -- even a visual no-op like
+    // translateY(0) -- makes an element the containing block for its
+    // `position: fixed` descendants (CSS spec, not a browser quirk).
+    // ProjectManager appends its FAB as a child of #app
+    // (mountEl.appendChild(fab)), so with #app permanently
+    // transformed, the FAB was never actually fixed to the viewport
+    // at all -- it rendered `right`/`bottom` relative to #app's OWN
+    // box instead, which shifts depending on #app's current content
+    // height (project count, search results, etc.) -- exactly
+    // matching "randomly teleports to different locations."
+    // animationend + {once:true} cleans the class up as soon as the
+    // animation genuinely completes, tied to this specific instance
+    // of it (not a hardcoded setTimeout duration that could drift out
+    // of sync with base.css's own 0.18s if that ever changes) --
+    // restoring real viewport-fixed positioning for the rest of the
+    // page visit, matching what this function was already trying to
+    // do, not a new design choice.
+    appMount.addEventListener(
+      'animationend',
+      () => appMount.classList.remove('aisapp-page-enter'),
+      { once: true }
+    );
   }
 
   function render() {

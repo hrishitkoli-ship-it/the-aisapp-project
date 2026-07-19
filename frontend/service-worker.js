@@ -13,6 +13,37 @@
  * on every load instead of running a stale one indefinitely -- this
  * file doesn't need to do anything special to cooperate with that,
  * it's handled entirely on the server side.
+ *
+ * CORRECTED (Session 4, found via a live bug report -- a FAB rendered
+ * in a stale, wrong position, "randomly," across page loads): the
+ * fetch handler used to be cache-FIRST ("return cached ||
+ * networkFetch") with a static CACHE_NAME that nothing bumps on
+ * deploy. That combination means once any shell asset is cached, a
+ * browser keeps serving that exact version indefinitely -- a
+ * background fetch updates the cache for NEXT time, but the CURRENT
+ * load still gets whatever was cached, however old. With several
+ * deploys landing in quick succession (this session's own #16 fix,
+ * the migration-blob bug fixes, this file's own fix), different
+ * shell files could end up cached from DIFFERENT deploys depending on
+ * exactly when each one's background refresh last completed --
+ * which looks exactly like "random" inconsistent behavior from the
+ * outside, because it effectively is.
+ *
+ * This file's own header already says what it's FOR: offline use,
+ * i.e. a fallback -- not a freshness-sacrificing performance cache.
+ * Network-first actually matches that stated intent better than
+ * cache-first did: online (the common case), you always get the
+ * current deploy; offline, you fall back to whatever's cached, same
+ * as before. No version-bump discipline required going forward --
+ * cache staleness stops being possible for anyone with connectivity,
+ * rather than depending on someone remembering to bump CACHE_NAME
+ * every time the shell changes (which is exactly what didn't happen
+ * across today's several deploys).
+ *
+ * CACHE_NAME bumped v4 -> v5 alongside the strategy change specifically
+ * to force an immediate clean purge+refetch for anyone already stuck
+ * on a stale v4 cache from today, rather than waiting for their first
+ * successful network-first fetch to organically overwrite each file.
  * ------------------------------------------------------------------
  */
 
@@ -86,21 +117,20 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // NETWORK-FIRST, falling back to cache only on failure (offline, or
+  // any fetch error) -- see header comment for why this replaced the
+  // old cache-first strategy. Always refreshes the cache in the
+  // background on a successful network response, same as before, so
+  // the offline fallback stays reasonably current too.
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const networkFetch = fetch(event.request)
-        .then((response) => {
-          if (response && response.status === 200) {
-            const copy = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-          }
-          return response;
-        })
-        .catch(() => cached); // offline: fall back to cache if the network fails
-
-      // Cache-first for instant loads, but always refresh in the
-      // background so the next load picks up any change.
-      return cached || networkFetch;
-    })
+    fetch(event.request)
+      .then((response) => {
+        if (response && response.status === 200) {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        }
+        return response;
+      })
+      .catch(() => caches.match(event.request))
   );
 });

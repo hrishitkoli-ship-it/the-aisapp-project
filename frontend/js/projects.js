@@ -490,7 +490,27 @@
             onCreated(project);
           } catch (err) {
             clear(errorSlot);
-            errorSlot.appendChild(h('div', { class: 'aisapp-status aisapp-status--error' }, err.message));
+            // Special case: the backend returned a ToS-gate 403. Instead
+            // of a generic error, show an actionable message with a direct
+            // link to the Settings page where the user can accept.
+            if (err.body && err.body.requiresTosAcceptance) {
+              const settingsLink = h(
+                'a',
+                {
+                  href: '#/settings',
+                  onclick: () => close(),
+                },
+                'Settings'
+              );
+              const msg = h('div', { class: 'aisapp-status aisapp-status--error' }, [
+                'Accept the Terms & Privacy Policy in ',
+                settingsLink,
+                ' before creating a project.',
+              ]);
+              errorSlot.appendChild(msg);
+            } else {
+              errorSlot.appendChild(h('div', { class: 'aisapp-status aisapp-status--error' }, err.message));
+            }
           } finally {
             isSubmitting = false;
             submitBtn.disabled = false;

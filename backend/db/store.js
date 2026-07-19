@@ -108,6 +108,31 @@ class AccountSizeLimitError extends Error {
 }
 
 /**
+ * Thrown when a query references a column or table that schema.sql
+ * declares but the LIVE database doesn't actually have -- this
+ * project's own recurring failure mode (see Session Ledger: an
+ * earlier live incident where the Turso schema had simply never been
+ * applied). Without this, that class of error surfaces as an opaque
+ * "Internal server error." with the real cause visible only in
+ * server-side logs the person reporting the bug usually can't see.
+ * statusCode 500 (not 503) deliberately -- this isn't a transient
+ * "try again" condition, it needs a schema fix, and 503 would
+ * misleadingly suggest otherwise to a caller retrying automatically.
+ */
+class SchemaDriftError extends Error {
+  constructor(message) {
+    super(
+      `Database schema is out of date: ${message}. schema.sql declares ` +
+        'this, but the live database doesn\'t have it -- someone needs to ' +
+        'apply the current schema.sql (or the missing ALTER TABLE) via the ' +
+        'Turso dashboard SQL console. This is a server configuration issue, ' +
+        'not something wrong with your request.'
+    );
+    this.statusCode = 500;
+  }
+}
+
+/**
  * SECURITY: preserved from the original store.js. projectId arrives
  * as a raw URL path segment; real projectIds are always nanoid(10)
  * (URL-safe alphabet only). Validating the shape up front and
@@ -132,6 +157,17 @@ function assertValidProjectId(projectId) {
  * TAG is either PROJECT_CAP or ACCOUNT_CAP (see db/schema.sql) so we
  * can tell the two apart and surface the right error class + the
  * human-readable message that follows the colon.
+ *
+ * ALSO detects "no such column"/"no such table" -- standard SQLite
+ * error phrasing, verified against a real local libSQL engine (not
+ * assumed) -- and wraps it as SchemaDriftError instead of letting it
+ * pass through as an opaque generic error. Added while investigating
+ * a live "Internal server error" report on project creation; couldn't
+ * confirm this specific pattern IS what's happening live without
+ * server-side log access, but it's this project's own documented
+ * recurring failure mode, and hardening it here makes it immediately
+ * diagnosable from the response alone if it's the cause now or ever
+ * recurs for a different column/table later.
  */
 function translateDbError(err) {
   const msg = err?.message || String(err);
@@ -139,6 +175,8 @@ function translateDbError(err) {
   if (projectMatch) return new ProjectSizeLimitError(projectMatch[1].trim());
   const accountMatch = msg.match(/ACCOUNT_CAP:(.+?)(?:'|"|$)/);
   if (accountMatch) return new AccountSizeLimitError(accountMatch[1].trim());
+  const schemaMatch = msg.match(/no such (?:column|table): ([\w.]+)/i);
+  if (schemaMatch) return new SchemaDriftError(schemaMatch[0]);
   return err;
 }
 
@@ -429,15 +467,49 @@ async function createMigrationBlob(ciphertext) {
  * "that ID never existed" vs. "that ID expired" vs. "that ID was
  * already used" leaks more than a human redeeming their own link
  * ever needs to know.
+ *
+ * CORRECTED (Session 4, found during a general bug-hunt pass, not
+ * assumed from reading -- verified against a real local libSQL engine
+ * before and after): this used to run a separate
+ * `SELECT ... WHERE expires_at > datetime('now')` followed by an
+ * unconditional `DELETE ... WHERE id = ?`. Two independent bugs:
+ *
+ *   1. `expires_at` is stored as `new Date(...).toISOString()`
+ *      ('2026-07-17T14:33:01.456Z' -- 'T' separator, milliseconds, 'Z').
+ *      SQLite's `datetime('now')` produces '2026-07-17 14:33:01' --
+ *      space separator, no ms, no 'Z'. Comparing these as plain SQL
+ *      strings is a lexicographic comparison, and 'T' (0x54) sorts
+ *      AFTER ' ' (0x20) -- so for any expiry on the same UTC calendar
+ *      day as "now" (i.e. essentially always, given a 10-minute TTL),
+ *      `expires_at > datetime('now')` evaluated true REGARDLESS OF THE
+ *      ACTUAL TIME. The TTL was pure decoration; nothing ever expired
+ *      on its own. Confirmed empirically (not just reasoned about) --
+ *      a blob with `expires_at` 5 minutes in the past was still
+ *      returned as valid by the old query, every time, in a real
+ *      engine test.
+ *   2. The SELECT and DELETE were two separate awaited round-trips,
+ *      not one atomic operation -- two concurrent requests for the
+ *      same id could both pass the SELECT before either's DELETE
+ *      landed, both receiving the ciphertext. This violates the
+ *      single-use guarantee this function's own docstring (and
+ *      routes/migration.js's, and migration.js's) explicitly promise.
+ *
+ * Fixed by collapsing to one atomic `DELETE ... RETURNING` -- the row
+ * is removed unconditionally on id match in a single round-trip (no
+ * race window), then expiry is checked in JS via `new Date(...)`,
+ * which parses both formats unambiguously and sidesteps the string-
+ * comparison format mismatch entirely rather than trying to make the
+ * SQL-side comparison correct instead.
  */
 async function consumeMigrationBlob(id) {
   const result = await run(
-    "SELECT ciphertext FROM aisapp_migration_blobs WHERE id = ? AND expires_at > datetime('now')",
+    'DELETE FROM aisapp_migration_blobs WHERE id = ? RETURNING ciphertext, expires_at',
     [id]
   );
   const row = result.rows[0];
-  await run('DELETE FROM aisapp_migration_blobs WHERE id = ?', [id]);
-  return row ? row.ciphertext : null;
+  if (!row) return null;
+  const isExpired = new Date(row.expires_at).getTime() <= Date.now();
+  return isExpired ? null : row.ciphertext;
 }
 
 // ---------------------------------------------------------------------
@@ -556,6 +628,7 @@ module.exports = {
   InvalidProjectIdError,
   ProjectSizeLimitError,
   AccountSizeLimitError,
+  SchemaDriftError,
   MigrationBlobTooLargeError,
   PROJECT_SIZE_LIMIT_BYTES,
   ACCOUNT_SIZE_LIMIT_BYTES,
