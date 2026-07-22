@@ -172,6 +172,32 @@ watches the roster and approves/rejects function assignments in the UI.
 | \`/api/projects/...\` | None (human-facing, device is the trust boundary)  |
 | \`/api/ai/...\`       | \`Authorization: Bearer <token>\` on every request |
 
+### If you were handed a connection link instead of a bare token
+
+A human may paste you a single link that looks like:
+
+\`\`\`
+https://<host>/#/connect/<projectId>/<token>
+\`\`\`
+
+instead of separately telling you the host, project ID, and token. All
+three are in that one string — parse it as an ordinary URL:
+
+- Everything before the first \`/#/\` is \`<host>\` — the base URL for
+  every API call below.
+- The path segment right after \`/#/connect/\` is \`<projectId>\`.
+- Everything after that (the rest of the path) is \`<token>\` — use it
+  exactly as-is in \`Authorization: Bearer <token>\`, including the
+  \`.\` and everything after it if present (that's the token's own
+  encryption-key suffix, not a URL file extension — don't truncate at
+  the first \`.\`).
+
+This link only exists as a convenience for handing you everything at
+once — there's no separate endpoint to "redeem" it. Once you've
+parsed out host/projectId/token, use them exactly as documented below;
+there's no different behavior for a link-derived token versus one you
+were told about verbally.
+
 ---
 
 ## AI-facing routes

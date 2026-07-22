@@ -301,6 +301,22 @@ back in. `device.js` is deliberately left UNMOUNTED in `app.js` (no
 broken — better for it to be visibly absent than silently 500ing on
 every call once this is live.
 
+**Update (Session 2):** this gap is now closed. Verified live, directly
+against the current files, not assumed from this section's own claim:
+`store.js` currently exports `getDevice`, `saveDevice`, `deleteDevice`,
+`getOrCreateDeviceCode`, `getOrCreateDeviceSecretHash`, and
+`setDeviceSecretHash` (confirmed via `module.exports` directly), and
+`app.js` has `app.use('/api/device', deviceRoutes)` wired in.
+`routes/device.js` itself documents the actual reconciliation in its
+own header comment — ported to async `store.*` calls, and the
+delete-cascade now correctly scopes to the calling device's own
+projects (`store.listProjectIdsForDevice`) rather than every project
+in the database, now that `aisapp_devices` can hold more than one
+device's identity on a shared deployment. Leaving the original
+"Not fixed here" paragraph above unedited, same as §3b's own practice —
+it's still the right explanation of what the gap was and why it
+mattered, just no longer the current state.
+
 ## 5. Things explicitly out of scope for this document / this session
 
 - **Real authentication on human-facing routes** (§3b). Known gap,
@@ -315,9 +331,8 @@ every call once this is live.
   assumes a local filesystem even in the Turso-groundwork files above;
   Vercel's ephemeral filesystem means this needs its own answer (blob
   store, or a `files` table in Turso too), not decided here.
-- **Restoring device identity to the new Turso schema** (§4a). Flagged
-  as the most urgent open item from this pass — bigger than a wiring
-  fix, needs Session 2's input on schema fit, not solved here.
+- ~~Restoring device identity to the new Turso schema~~ (§4a) — done,
+  see that section's Update note. No longer open.
 
 ## 6. For future sessions: the original warning still applies
 
