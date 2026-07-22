@@ -1894,6 +1894,88 @@ implicit folder creation via a slash in the new-file path, search
 debounce and result click, and the reconciled CSV export's header,
 quoting, and filename.
 
+**Follow-up 4: FAB "teleporting" re-report, two silently-regressed
+features found and restored, a real card-collision bug, and the
+project-id-in-token onboarding fix.**
+
+Investigated a report that the FAB positioning bug (see Session 4's
+two fixes above) "still exists." Traced both of those fixes -- the
+CSS root cause (`animationend` cleanup in router.js so `#app` never
+keeps a lingering `transform`) and the service worker's cache-first
+-> network-first rework (so a stale cached copy can't mask a shipped
+fix) -- and found both correct and complete; did not find a remaining
+code-level cause. The screenshot accompanying the report had the
+identical filename/timestamp as one from earlier in the same
+conversation, from before either fix existed -- almost certainly a
+stale re-attach, not a fresh reproduction.
+
+That investigation surfaced two real, unrelated regressions from this
+lane's own earlier work, both silently dropped when the search/FAB
+feature sprint (`cf865508`) independently rewrote the same functions
+from scratch, before that session saw this one's version (not a merge
+conflict -- neither side knew the other existed yet):
+- The staggered project-card entrance animation was gone entirely.
+  Restored with `animationend` cleanup built in from the start (the
+  same fix class as the FAB bug) and the per-card delay capped at
+  400ms.
+- The home page hero (eyebrow/title/subtitle) had fully reverted to a
+  plain heading. Restored.
+
+Also fixed, found while restoring the hero and looking at cards for a
+"text cramped" report: the "Current" badge was `position: absolute`,
+overlaid on the project name with no reserved space -- fine for a
+short name, but it would run through a longer one rather than the
+name truncating around it. Changed to a flex row (name + badge as
+siblings) instead.
+
+**Project-id-in-token**, from a real connection failure: an AI agent
+given a token and a project URL couldn't derive its project id from
+either -- the URL's id lives in a client-side-only hash fragment
+(never sent to the server), and the agent's own sandbox couldn't reach
+the deployed host at all besides. `tokens.js`'s `composeToken()` now
+optionally appends the project id as a third `.`-delimited segment
+(nanoid's default alphabet, like base64url, never contains a period,
+so this is unambiguous); `parseCompositeToken()` extracts it, staying
+backward-compatible with every token format issued before it (0 or 1
+dots). Server-side auth is unaffected -- it already takes projectId
+from the URL path, never trusts anything embedded in the token, so
+this can't be used to spoof project access. `scripts/generate-skill.js`
+(the actual template `frontend/SKILL.md` is regenerated from on every
+deploy -- hand-editing the output directly gets silently overwritten)
+gained a "Setup" section teaching one-line extraction plus why not to
+fetch the app's URL.
+
+**Merged with Session 2's parallel, independent fix for the exact same
+underlying problem** (a "connection link" wrapping host + projectId +
+the existing token into one shareable string, entirely a
+frontend/router convenience layer that never touches tokens.js).
+Verified compatible rather than assumed: their router.js regex
+captures the token with an unrestricted `(.+)`, so this lane's extra
+internal dot passes through untouched; their `showTokenModal()` takes
+`token` as a plain parameter and never parses it. Real conflict was
+narrower than the touched-file list suggested -- only the *generated*
+`frontend/SKILL.md` conflicted; the actual template auto-merged clean.
+Resolved by regenerating fresh from the merged template rather than
+hand-editing generated markdown, and fixed one accuracy gap the merge
+surfaced: Session 2's "don't truncate at the first dot" note was
+written against the token's old 2-part shape and undercounted by one
+once a project-id suffix followed the encryption-key suffix too.
+
+Verified: full repo-wide `node --check` + CSS brace-balance sweep after
+every commit and after the merge; 12 assertions on the token
+compose/parse round trip and backward compatibility with 0-dot and
+1-dot tokens; a line-for-line simulation of `middleware/auth.js`'s
+actual verification logic confirming tampering with the auth-relevant
+segment still fails while tampering with *only* the project-id suffix
+has no effect (by design); a fresh end-to-end test building a real
+3-part token, wrapping it in a connection link, and running it through
+Session 2's exact regex, confirming both projectId and the full
+(un-truncated) token extract correctly; 11 jsdom assertions on the
+restored hero, the card header restructure (badge as a header sibling,
+present only for the current project), and the stagger animation's
+class/delay/cleanup wiring; and a live server boot after each change
+and after the final merge.
+
 ### Session 5 — Testing, docs, and integration *(historical — lane retired)*
 
 **Status: shipped, lane closed.** Full route smoke test
