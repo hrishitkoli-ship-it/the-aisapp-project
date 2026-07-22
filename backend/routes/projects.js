@@ -137,7 +137,7 @@ router.post('/', humanSensitiveLimiter, requireDeviceSecret, async (req, res, ne
     // exactly once, here at creation time.
     res.status(201).json({
       ...stripSecret(project),
-      token: composeToken(rawToken, encryptionKey),
+      token: composeToken(rawToken, encryptionKey, id),
     });
   } catch (err) {
     // Same bug class as files.js's write handler (see that file's
@@ -239,7 +239,7 @@ router.post('/:projectId/regenerate-token', humanSensitiveLimiter, requireDevice
       timestamp: new Date().toISOString(),
     });
 
-    res.json({ ...stripSecret(updated), token: composeToken(rawToken, encryptionKey) });
+    res.json({ ...stripSecret(updated), token: composeToken(rawToken, encryptionKey, projectId) });
   } catch (err) {
     next(err);
   }

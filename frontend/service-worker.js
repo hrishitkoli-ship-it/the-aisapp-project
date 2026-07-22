@@ -53,6 +53,7 @@ const SHELL_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
+  '/SKILL.md',
   '/css/base.css',
   '/css/projects.css',
   '/css/workspace.css',
