@@ -302,6 +302,33 @@
   }
 
   function render() {
+    // #/connect/:projectId/:token -- a shareable "give an AI (or
+    // yourself, on a new browser) everything needed to reach this
+    // project in one string" link (Hhriko's direct request: entering
+    // a project shouldn't require separately knowing the server's
+    // own URL). Handled as an immediate redirect, BEFORE the normal
+    // route dispatch below, rather than as its own route.name branch
+    // with a render function -- unlike #/migrate/:id/:key (which
+    // needs a real confirmation UI, since redeeming a migration is a
+    // consequential action), a connect link isn't: human-facing reads
+    // are already unauthenticated by this app's own design (see
+    // SECURITY.md §1 -- "browsing your own data shouldn't need
+    // re-authenticating"), so a human opening this link doesn't need
+    // the embedded token for anything the browser UI does. The token
+    // portion exists for whatever's READING this string as plain
+    // text (an AI, told to use it as its `Authorization: Bearer`
+    // credential for /api/ai/... calls) -- a browser just needs the
+    // projectId to jump to the right place, so this rewrites the hash
+    // to the plain project route and drops the token immediately,
+    // rather than carrying a live credential around in the visible
+    // URL bar any longer than the one instant it takes to redirect.
+    const connectMatch = window.location.hash.replace(/^#/, '').match(/^\/connect\/([^/]+)\/(.+)$/);
+    if (connectMatch) {
+      const [, projectId] = connectMatch;
+      window.location.hash = `#/project/${projectId}/workspace`;
+      return; // the hashchange this triggers calls render() again, normally this time
+    }
+
     const route = parseHash();
     appMain.scrollTop = 0; // reset scroll position on every navigation
     teardownCurrentPage(); // stop whatever was polling on the previous page/project

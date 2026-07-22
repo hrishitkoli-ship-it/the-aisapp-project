@@ -297,29 +297,63 @@
     });
   }
 
-  function showTokenModal({ token, projectName, isRegeneration }) {
+  function showTokenModal({ token, projectName, isRegeneration, projectId }) {
     const overlay = h('div', { class: 'aisapp-modal-overlay' });
 
-    const copyBtn = h(
+    // Connection string (human request: "just giving the key is
+    // enough to access the project" -- don't make an AI separately
+    // ask for the server's own URL). Wraps the EXISTING token
+    // unchanged -- nothing about tokens.js's actual auth mechanism
+    // changes, this is purely an assembly of already-available pieces
+    // into one paste-able string: this browser's own origin (always
+    // correct, no new server config needed) + the #/connect/:id/:token
+    // hash route router.js now redirects on receipt of + the token
+    // itself. An AI parsing this as plain text gets everything it
+    // needs (host, projectId, token) from one string; a human who
+    // clicks it (on any device that can reach this deployment) lands
+    // directly in the project, no separate "which project, what's
+    // the URL" back-and-forth needed either.
+    const connectionString = `${window.location.origin}/#/connect/${projectId}/${token}`;
+
+    const copyConnectionBtn = h(
       'button',
       {
         class: 'aisapp-btn aisapp-btn--primary aisapp-icon-row',
         onclick: async () => {
           try {
-            await navigator.clipboard.writeText(token);
-            copyBtn.innerHTML = '';
-            copyBtn.appendChild(window.AisappIcons.el('check', { size: 15 }));
-            copyBtn.appendChild(document.createTextNode('Copied'));
-            setTimeout(() => (copyBtn.textContent = 'Copy token'), 2000);
+            await navigator.clipboard.writeText(connectionString);
+            copyConnectionBtn.innerHTML = '';
+            copyConnectionBtn.appendChild(window.AisappIcons.el('check', { size: 15 }));
+            copyConnectionBtn.appendChild(document.createTextNode('Copied'));
+            setTimeout(() => {
+              copyConnectionBtn.innerHTML = '';
+              copyConnectionBtn.appendChild(window.AisappIcons.el('key', { size: 15 }));
+              copyConnectionBtn.appendChild(document.createTextNode('Copy connection link'));
+            }, 2000);
           } catch {
-            // Clipboard API can fail (permissions, insecure context on
-            // some mobile browsers) -- the token is still selectable
-            // text in the <code> block below, so this isn't fatal.
-            copyBtn.textContent = 'Copy failed — select manually below';
+            copyConnectionBtn.textContent = 'Copy failed — select the token manually below';
           }
         },
       },
-      'Copy token'
+      [window.AisappIcons.el('key', { size: 15 }), 'Copy connection link']
+    );
+
+    const copyTokenBtn = h(
+      'button',
+      {
+        class: 'aisapp-btn aisapp-btn--subtle aisapp-icon-row',
+        title: 'Just the raw token, without the server URL -- for manually building your own requests',
+        onclick: async () => {
+          try {
+            await navigator.clipboard.writeText(token);
+            copyTokenBtn.textContent = 'Copied';
+            setTimeout(() => (copyTokenBtn.textContent = 'Copy token only'), 2000);
+          } catch {
+            copyTokenBtn.textContent = 'Copy failed — select manually below';
+          }
+        },
+      },
+      'Copy token only'
     );
 
     const doneBtn = h(
@@ -344,8 +378,14 @@
             ? 'The previous token is now invalid. This new one is shown only once.'
             : 'This token is shown only once. Copy it now — there is no way to view it again, only regenerate a new one.'
         ),
-        h('code', { class: 'aisapp-token-display', tabindex: '0' }, token),
-        h('div', { class: 'aisapp-modal-actions' }, [copyBtn, doneBtn]),
+        h(
+          'p',
+          {},
+          'The connection link below is everything an AI session needs in one paste — server, project, and token together. Paste it directly into a chat with a coding AI to give it access.'
+        ),
+        h('code', { class: 'aisapp-token-display', tabindex: '0' }, connectionString),
+        h('div', { class: 'aisapp-modal-actions' }, [copyConnectionBtn, doneBtn]),
+        h('div', { class: 'aisapp-modal-actions' }, [copyTokenBtn]),
       ]
     );
 
@@ -486,7 +526,7 @@
           try {
             const project = await createProject(name, descInput.value.trim());
             close();
-            showTokenModal({ token: project.token, projectName: project.name, isRegeneration: false });
+            showTokenModal({ token: project.token, projectName: project.name, isRegeneration: false, projectId: project.id });
             onCreated(project);
           } catch (err) {
             clear(errorSlot);
@@ -833,7 +873,7 @@
               confirmLabel: 'Regenerate',
               onConfirm: async () => {
                 const updated = await regenerateToken(project.id);
-                showTokenModal({ token: updated.token, projectName: project.name, isRegeneration: true });
+                showTokenModal({ token: updated.token, projectName: project.name, isRegeneration: true, projectId: project.id });
               },
             });
           },
