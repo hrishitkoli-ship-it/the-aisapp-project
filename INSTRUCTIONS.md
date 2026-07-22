@@ -1640,6 +1640,46 @@ logged — not just that the DOM updated.
   ("Remove the storage-read-only stopgap...") alone -- Session 3's
   item, not mine to reorganize.
 
+**Follow-up 5 (connection link, `697a848`):**
+- Direct human request, not from `IDEAS.md`: entering a project
+  required separately knowing the server's own URL alongside the
+  token, defeating "give an AI the key and it just works." Two shapes
+  were on the table (make the URL not required at all, or fold it
+  into the key) -- picked folding it in, and said so: "not required at
+  all" isn't really achievable without a fixed, hardcoded host that
+  breaks on redeploy, while baking in the CURRENT host at
+  generation-time has no such fragility.
+- Deliberately a wrapper, not a change to `tokens.js` -- the composite
+  token format, hashing, verification are all untouched.
+  `showTokenModal()` in `projects.js` now assembles
+  `https://<host>/#/connect/<projectId>/<token>` from three already-
+  available pieces and offers it as the primary copy action, with the
+  previous bare-token copy demoted to secondary (same functionality,
+  just no longer default).
+- `router.js` gained a `#/connect/:projectId/:token` hash route,
+  following the exact pattern `#/migrate/:id/:key` already
+  established. Unlike migration redemption, no confirm UI needed --
+  human-facing reads are already unauthenticated by this app's own
+  design (`SECURITY.md` §1), so a browser opening this link doesn't
+  need the token for anything; it redirects to the plain project
+  route and drops the token from the visible URL immediately.
+- `SKILL.md`'s generator now documents the format directly, so an AI
+  handed a link (instead of being told host/projectId/token
+  separately) knows how to parse it without a chat explanation.
+- Verified construction against a realistic token/projectId and
+  round-tripped router.js's own parsing regex against it. Confirmed
+  nanoid's default alphabet and base64url (both already used
+  throughout this token format) never produce `/`, so the string's
+  host/projectId/token boundaries are unambiguous by construction.
+- Found while confirming what "permanent id" in the request actually
+  maps to (the device code already embedded opaquely in every token):
+  `SECURITY.md` §4a and its §5 summary bullet both still claimed
+  device identity was broken and `device.js` unmounted. Verified live
+  against the current files -- it's fixed (`store.js` exports all six
+  device functions, `device.js` is mounted). Annotated with an Update
+  note matching §3b's own established pattern rather than deleting the
+  history, and struck the stale §5 bullet.
+
 ### Session 1 — Frontend Core (Workspace + file tree UI)
 **Status: shipped.** `frontend/index.html` (real app shell, replacing
 Session 3's unblock-only placeholder), `frontend/js/router.js`,
