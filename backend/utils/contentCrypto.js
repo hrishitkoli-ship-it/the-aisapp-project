@@ -15,16 +15,32 @@
  * require() it locally. Zero external dependencies (Node's built-in
  * `crypto` only), so copying it is genuinely all that's needed.
  *
- * KEY SOURCE: the encryption key is the part of your composite AI
- * token after the first '.' -- see tokens.js's composeToken /
- * parseCompositeToken on the server side for how it got there. e.g.
- * given a token like "aisapp_AbC123....XyZ789", everything after the
- * first "." is your base64url-encoded 256-bit key. Parse it out like:
+ * KEY SOURCE: the encryption key is the MIDDLE '.'-delimited segment
+ * of your composite AI token -- see tokens.js's composeToken /
+ * parseCompositeToken on the server side for the full format
+ * (currently: authToken.encryptionKey.projectId, though the
+ * projectId segment is a newer addition and may not be present on
+ * an older token). Parse it out like:
  *
- *   const fullToken = "aisapp_AbC123....XyZ789"; // from your env/config
- *   const dotIndex = fullToken.indexOf('.');
- *   const authToken = fullToken.slice(0, dotIndex);       // for Authorization: Bearer
- *   const encryptionKeyB64url = fullToken.slice(dotIndex + 1); // for this module
+ *   const fullToken = "aisapp_AbC123..._xyz.XyZ789key.projABC123"; // from your env/config
+ *   const parts = fullToken.split('.');
+ *   const authToken = parts[0];             // for Authorization: Bearer
+ *   const encryptionKeyB64url = parts[1];   // for this module
+ *   const projectId = parts[2];             // may be undefined on an older token
+ *
+ * BUG HISTORY, so this doesn't regress again: this comment used to
+ * say "everything after the first '.'" and extract the key via
+ * `fullToken.slice(fullToken.indexOf('.') + 1)`. That was correct
+ * when the token only ever had two segments, but once tokens.js
+ * added the projectId as a third segment, "everything after the
+ * first dot" silently became "encryptionKey.projectId" -- a corrupted
+ * key, wrong length, that throws the "must be 32 bytes" error below
+ * on first use. Confirmed by reproducing it directly: a 3-segment
+ * token run through the old snippet decodes to a 39-byte buffer, not
+ * 32. Split-and-index (by position, not "from here to the end") is
+ * correct regardless of how many segments come after the key, so a
+ * future fourth segment (if one's ever added) can't reintroduce this
+ * same failure mode.
  *
  * USAGE:
  *   const { encryptContent, decryptContent } = require('./contentCrypto');
@@ -59,7 +75,9 @@ function encryptContent(plaintext, encryptionKeyB64url) {
   if (key.length !== 32) {
     throw new Error(
       `Encryption key must be 32 bytes (256 bits) once decoded, got ${key.length}. ` +
-        'Check you copied the full key from after the "." in your composite token.'
+        'Check you copied ONLY the middle "."-delimited segment of your composite ' +
+        'token (split on "." and take index 1) -- not everything after the first dot, ' +
+        'which now also includes the project id if your token has one.'
     );
   }
 
@@ -87,7 +105,9 @@ function decryptContent(envelopeBase64, encryptionKeyB64url) {
   if (key.length !== 32) {
     throw new Error(
       `Encryption key must be 32 bytes (256 bits) once decoded, got ${key.length}. ` +
-        'Check you copied the full key from after the "." in your composite token.'
+        'Check you copied ONLY the middle "."-delimited segment of your composite ' +
+        'token (split on "." and take index 1) -- not everything after the first dot, ' +
+        'which now also includes the project id if your token has one.'
     );
   }
 
