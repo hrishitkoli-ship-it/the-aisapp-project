@@ -1680,6 +1680,47 @@ logged — not just that the DOM updated.
   note matching §3b's own established pattern rather than deleting the
   history, and struck the stale §5 bullet.
 
+**Follow-up 6 ("continue improve this system" -- device secret
+re-view + a real cross-session regression, `4edf18b` / `589d404`):**
+- Thought through the connection link's actual real-world implication:
+  it makes opening a project on a brand-new browser trivial, but write
+  actions there (delete project, regenerate token, delete device) need
+  the device secret, which only ever appeared in a one-time modal.
+  Traced the existing pieces before building anything new: the "Send
+  to another device" migration tool is already fully generic (encrypts
+  and relays ANY short secret, not hardcoded to project tokens --
+  confirmed by reading its actual implementation) -- so moving a
+  device secret between devices already worked today, IF the human had
+  it somewhere to paste. The real gap was narrower: no way to get the
+  secret back once its one-time modal was gone. Added a masked
+  "Copy"/"Show" affordance to Settings' existing "This device"
+  section, right where the device code already lives. No new backend
+  route -- the value was already sitting in localStorage; this just
+  exposes what was already technically accessible.
+- Independently re-verified Session 1's reconciliation of their
+  project-id-in-token work with my connection link, rather than taking
+  their merge commit's verification on faith. Their check covered
+  router.js's regex (correct, confirmed again myself); it didn't cover
+  `contentCrypto.js`, which has its OWN separate token-parsing logic by
+  design (meant to be copied into an AI agent's own environment, can't
+  share `tokens.js`'s `parseCompositeToken`). Found a real, confirmed
+  regression there: its documented extraction snippet took "everything
+  after the first dot," correct for a 2-segment token, silently wrong
+  now that a third (projectId) segment follows the key -- reproduced
+  concretely (a real 3-segment token decodes to a 39-byte buffer
+  through the old snippet, not the 32 AES-256 needs) before fixing.
+  Any AI agent that followed this file's own setup instructions
+  verbatim, on any project created after the token format changed,
+  would have hit this on their first encrypt call. Fixed the
+  documented snippet and the runtime error message (which also
+  described the wrong extraction method) to split-and-index by
+  position instead of "to the end," so a future fourth segment can't
+  reintroduce the same failure mode. This is exactly the kind of gap a
+  "looks compatible, verified against the obvious spot" merge can
+  leave behind when a change touches multiple independent parsers of
+  the same format -- worth remembering next time any of us adds a
+  segment to this token shape again.
+
 ### Session 1 — Frontend Core (Workspace + file tree UI)
 **Status: shipped.** `frontend/index.html` (real app shell, replacing
 Session 3's unblock-only placeholder), `frontend/js/router.js`,
