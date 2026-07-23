@@ -201,6 +201,8 @@
       searchResults: null,
       searchLoading: false,
       creatingFile: false,
+      creatingFileDraft: '', // preserved across re-renders so an unrelated re-render (e.g. search's own debounce cycle) can't silently wipe what's been typed
+      creatingFileJustOpened: false, // one-shot: only autofocus the instant this opens, never on a later re-render triggered by something else
     };
   }
 
@@ -352,7 +354,29 @@
       renderShell();
       return;
     }
-    existing.replaceWith(renderTreePanel());
+
+    // A full rebuild replaces every child with a brand-new element,
+    // including whichever one currently has focus -- the browser does
+    // NOT carry focus over to a new element just because it looks the
+    // same, it falls back to nothing/body. Preserve it deliberately
+    // for the search input specifically, since typing in it is what
+    // most commonly *causes* this rebuild (via the debounce timer) --
+    // every keystroke pause would otherwise silently drop focus.
+    const active = document.activeElement;
+    const wasSearchFocused = !!(active && active.classList && active.classList.contains('aisapp-ws-search-input'));
+    const selStart = wasSearchFocused ? active.selectionStart : null;
+    const selEnd = wasSearchFocused ? active.selectionEnd : null;
+
+    const newPanel = renderTreePanel();
+    existing.replaceWith(newPanel);
+
+    if (wasSearchFocused) {
+      const newSearchInput = newPanel.querySelector('.aisapp-ws-search-input');
+      if (newSearchInput) {
+        newSearchInput.focus();
+        if (selStart !== null) newSearchInput.setSelectionRange(selStart, selEnd);
+      }
+    }
   }
 
   function toggleDir(path) {
@@ -848,11 +872,14 @@
 
   function startCreatingFile() {
     state.creatingFile = true;
+    state.creatingFileDraft = '';
+    state.creatingFileJustOpened = true;
     rerenderTreePanelOnly();
   }
 
   function cancelCreatingFile() {
     state.creatingFile = false;
+    state.creatingFileDraft = '';
     rerenderTreePanelOnly();
   }
 
@@ -869,6 +896,7 @@
         body: JSON.stringify({ content: '' }),
       });
       state.creatingFile = false;
+      state.creatingFileDraft = '';
       await loadTree();
       openFile(cleanPath);
     } catch (err) {
@@ -880,14 +908,34 @@
    *  Deliberately not a modal -- a whole overlay/header/paragraph/
    *  submit-button apparatus was a lot of weight for "type a path,
    *  press Enter", especially on a small screen. Same visual language
-   *  as the search input right above it in the panel. */
+   *  as the search input right above it in the panel.
+   *
+   *  BUG FIXED HERE: renderTreePanel() rebuilds this row from scratch
+   *  on every re-render, for ANY reason -- including one triggered by
+   *  the search bar's own debounce/loading cycle while this row
+   *  happened to still be open (e.g. the human tapped "New file",
+   *  then started using search instead without explicitly
+   *  cancelling). This function used to unconditionally focus() the
+   *  fresh, empty input it just built on every single call, which
+   *  stole focus away from the search box mid-typing -- the human's
+   *  next keystrokes (and an Enter press) then landed in this
+   *  freshly-emptied create-file input instead of search, actually
+   *  creating a file. Now: the draft text survives a rebuild (read
+   *  from/written to state, the same pattern the search input already
+   *  used correctly), and focus is only stolen once, right when this
+   *  row is genuinely just-opened -- never on a later, unrelated
+   *  re-render. */
   function renderCreateFileRow() {
     const input = h('input', {
       class: 'aisapp-search-input aisapp-ws-create-input',
       type: 'text',
       placeholder: 'path/to/file.js',
       autocomplete: 'off',
+      oninput: (e) => {
+        state.creatingFileDraft = e.target.value;
+      },
     });
+    input.value = state.creatingFileDraft;
     const cancelBtn = h(
       'button',
       { class: 'aisapp-tree-row-rename', type: 'button', title: 'Cancel', 'aria-label': 'Cancel new file' },
@@ -907,8 +955,10 @@
       submitCreateFile(input.value);
     });
 
-    // Focus after the element is actually in the DOM.
-    setTimeout(() => input.focus(), 0);
+    if (state.creatingFileJustOpened) {
+      state.creatingFileJustOpened = false;
+      setTimeout(() => input.focus(), 0);
+    }
     return form;
   }
 
