@@ -1721,6 +1721,49 @@ re-view + a real cross-session regression, `4edf18b` / `589d404`):**
   the same format -- worth remembering next time any of us adds a
   segment to this token shape again.
 
+**Follow-up 7 ("fix more"):**
+- `requireAIToken`: fixed a stale comment (described the token as
+  carrying only an encryption key after one dot, never updated for
+  the projectId segment -- harmless, the destructure just silently
+  ignored the extra field, but wrong). Added a projectId cross-check:
+  not a security fix (tokenHash already scopes a token to exactly the
+  project it was issued for, mismatch check or not -- verified by
+  reasoning through it), purely a diagnostic improvement for a
+  plausible mistake (an AI agent working across multiple projects,
+  extracting the right token but hitting the wrong project's URL)
+  that previously got a generic "invalid token" with no hint at the
+  actual fix. Tested all four cases in isolation: matching, mismatched,
+  older 2-segment token, bare token -- both older formats correctly
+  skip the check and fall through unchanged.
+- Systematically grepped the whole repo for any OTHER token-splitting
+  logic before considering the projectId-segment change fully audited,
+  rather than assuming contentCrypto.js was the only gap. Found
+  nothing else live (the other hits were file-extension parsing,
+  unrelated).
+- Picked up `IDEAS.md`'s flagged `aisapp_projects.updated_at` timestamp
+  fix directly rather than waiting on further sign-off -- small,
+  mechanical, already-proven-correct-elsewhere (identical to
+  `fileOps.js`'s own already-verified fix), a different kind of thing
+  from a scope/direction decision. All four write paths
+  (`saveProject`, `saveSessions`, `saveInstructions`, `appendActivity`)
+  now use `strftime`, not `datetime('now')`.
+- Caught and corrected a real mistake in my OWN earlier `SECURITY.md`
+  §4a annotation, while checking `KNOWN_ISSUES.md`'s open multi-device
+  entry before deciding whether to touch it: I'd repeated `device.js`'s
+  own header-comment claim ("`aisapp_devices` can hold more than one
+  device's identity") as verified fact, without independently checking
+  it against `store.js`'s actual `getDevice()` -- which takes zero
+  parameters and is hardcoded to the single oldest row, no per-request
+  resolution at all. Exactly the comment-vs-code mismatch this
+  document exists to catch, and I reproduced a small instance of it
+  myself in the very paragraph meant to be fixing an earlier one.
+  Corrected in place rather than left standing. Did NOT touch
+  `KNOWN_ISSUES.md`'s actual open item (build real multi-device
+  support, or formally settle for correcting the comment) -- still
+  correctly flagged there as needing a real human decision; my own
+  slip here is a data point for taking that seriously, not a reason
+  to resolve it as a side effect.
+
 ### Session 1 — Frontend Core (Workspace + file tree UI)
 **Status: shipped.** `frontend/index.html` (real app shell, replacing
 Session 3's unblock-only placeholder), `frontend/js/router.js`,
