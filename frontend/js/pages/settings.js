@@ -166,6 +166,72 @@
       );
     }
 
+    // Device secret: re-viewable, not just shown once (gap found while
+    // extending the connection-link feature -- that feature makes it
+    // easy to open a project on a brand-new browser, but write actions
+    // there (delete project, regenerate token, delete device) need
+    // this secret, which until now only ever appeared in a one-time
+    // modal on first write attempt. If that modal was missed, or the
+    // human wants to deliberately set up a second device later, there
+    // was no way back to it short of opening devtools and reading
+    // localStorage directly. This doesn't create any new exposure --
+    // the value's already sitting in this browser's localStorage,
+    // readable by this page's own JS (and anyone with devtools access
+    // to this browser) whether or not this button exists; it just adds
+    // a proper UI affordance for what was already accessible. Masked
+    // by default (unlike the device code above, which is a public-ish
+    // identifier, not a credential) since this section can stay open
+    // on-screen far longer than the one-time reveal modal ever did.
+    const storedSecret = getDeviceSecret();
+    if (storedSecret) {
+      let revealed = false;
+      const secretValueEl = h('code', { class: 'aisapp-settings-device-code-value' }, '••••••••••••••••');
+      const revealBtn = h(
+        'button',
+        {
+          class: 'aisapp-btn aisapp-btn--subtle aisapp-btn--sm',
+          onclick: () => {
+            revealed = !revealed;
+            secretValueEl.textContent = revealed ? storedSecret : '••••••••••••••••';
+            revealBtn.textContent = revealed ? 'Hide' : 'Show';
+          },
+        },
+        'Show'
+      );
+      const copySecretBtn = h(
+        'button',
+        {
+          class: 'aisapp-btn aisapp-btn--subtle aisapp-btn--sm',
+          onclick: async () => {
+            try {
+              await navigator.clipboard.writeText(storedSecret);
+              copySecretBtn.textContent = 'Copied!';
+              setTimeout(() => { copySecretBtn.textContent = 'Copy'; }, 2000);
+            } catch {
+              copySecretBtn.textContent = 'Reveal above to select';
+              setTimeout(() => { copySecretBtn.textContent = 'Copy'; }, 2000);
+            }
+          },
+        },
+        'Copy'
+      );
+      section.appendChild(
+        h('div', { class: 'aisapp-settings-device-code' }, [
+          h('span', { class: 'aisapp-settings-device-code-label' }, 'Device secret (this browser)'),
+          secretValueEl,
+          revealBtn,
+          copySecretBtn,
+        ])
+      );
+      section.appendChild(
+        h(
+          'p',
+          { class: 'aisapp-block-subtitle' },
+          'Needed on any device or browser where you want to delete a project, regenerate a token, or delete this device. Paste it into "Send to another device" below to move it somewhere else.'
+        )
+      );
+    }
+
     const deleteBtn = h(
       'button',
       {
