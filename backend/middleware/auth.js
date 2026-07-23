@@ -103,12 +103,35 @@ async function requireAIToken(req, res, next) {
       });
     }
 
-    // Composite tokens carry a content-encryption key after a '.'
-    // (see tokens.js) -- the server only ever verifies the auth part.
-    // Bare tokens (no '.') parse through unchanged, so this is
-    // backward-compatible with any token issued before the composite
-    // scheme existed.
-    const { authToken, encryptionKey } = parseCompositeToken(rawToken);
+    // Composite tokens carry a content-encryption key and (newer
+    // tokens) a project id after '.'-delimiters -- see tokens.js.
+    // The server only ever verifies the auth part against this
+    // project's own tokenHash; the encryption key is client-side-only
+    // and never used here. Bare tokens (no '.') and older two-segment
+    // tokens (no projectId) both parse through unchanged, so this
+    // stays backward-compatible with anything issued before either
+    // addition existed.
+    const { authToken, encryptionKey, projectId: tokenProjectId } = parseCompositeToken(rawToken);
+
+    // Not a security check -- tokenHash below already scopes a token
+    // to exactly the project it was issued for, regardless of this.
+    // This exists purely for a clearer error on a plausible mistake:
+    // an AI agent that extracts $PROJECT_ID from one token but
+    // constructs a request using a DIFFERENT project's URL (copy-paste
+    // slip, working across multiple projects at once) would otherwise
+    // just get a generic "invalid token" back, with no hint that the
+    // fix is "use the projectId embedded in the token you're actually
+    // sending," not "get a new token." Skipped entirely for tokens
+    // with no embedded projectId (older format) -- nothing to compare.
+    if (tokenProjectId && tokenProjectId !== projectId) {
+      return res.status(403).json({
+        error:
+          `This token is scoped to project "${tokenProjectId}" (per its own embedded ` +
+          `project id), but you requested project "${projectId}". Use the projectId ` +
+          `segment from the SAME token you're sending -- split it on "." and take ` +
+          `index 2, not a different value.`,
+      });
+    }
 
     if (!verifyToken(authToken, project.tokenHash)) {
       return res.status(403).json({ error: 'Invalid or revoked AI token.' });
