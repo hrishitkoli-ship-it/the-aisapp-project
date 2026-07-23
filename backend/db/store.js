@@ -525,8 +525,15 @@ async function getProject(projectId) {
 
 async function saveProject(projectId, data) {
   assertValidProjectId(projectId);
+  // strftime, not datetime('now') -- same fix as fileOps.js's
+  // aisapp_files.updated_at (see that file's comment for the full
+  // root cause, verified there under a real non-UTC TZ). Flagged for
+  // this table specifically in IDEAS.md ("Fix aisapp_projects.updated_at's
+  // timestamp format before anything reads it") before anything
+  // actually parsed it as a Date -- fixing now rather than leaving it
+  // for whoever adds that first "last edited" UI to hit fresh.
   await run(
-    "UPDATE aisapp_projects SET project = ?, updated_at = datetime('now') WHERE id = ?",
+    "UPDATE aisapp_projects SET project = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?",
     [JSON.stringify(data), projectId]
   );
   return data;
@@ -542,7 +549,7 @@ async function getSessions(projectId) {
 async function saveSessions(projectId, sessions) {
   assertValidProjectId(projectId);
   await run(
-    "UPDATE aisapp_projects SET sessions = ?, updated_at = datetime('now') WHERE id = ?",
+    "UPDATE aisapp_projects SET sessions = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?",
     [JSON.stringify(sessions), projectId]
   );
   return sessions;
@@ -560,7 +567,7 @@ async function getInstructions(projectId) {
 async function saveInstructions(projectId, data) {
   assertValidProjectId(projectId);
   await run(
-    "UPDATE aisapp_projects SET instructions = ?, updated_at = datetime('now') WHERE id = ?",
+    "UPDATE aisapp_projects SET instructions = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?",
     [JSON.stringify(data), projectId]
   );
   return data;
@@ -617,7 +624,7 @@ async function appendActivity(projectId, entry) {
   log = await trimActivityToFit(projectId, log);
 
   await run(
-    "UPDATE aisapp_projects SET activity = ?, updated_at = datetime('now') WHERE id = ?",
+    "UPDATE aisapp_projects SET activity = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?",
     [JSON.stringify(log), projectId]
   );
   return log;

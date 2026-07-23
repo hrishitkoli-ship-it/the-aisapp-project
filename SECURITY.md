@@ -306,16 +306,37 @@ against the current files, not assumed from this section's own claim:
 `store.js` currently exports `getDevice`, `saveDevice`, `deleteDevice`,
 `getOrCreateDeviceCode`, `getOrCreateDeviceSecretHash`, and
 `setDeviceSecretHash` (confirmed via `module.exports` directly), and
-`app.js` has `app.use('/api/device', deviceRoutes)` wired in.
-`routes/device.js` itself documents the actual reconciliation in its
-own header comment — ported to async `store.*` calls, and the
-delete-cascade now correctly scopes to the calling device's own
-projects (`store.listProjectIdsForDevice`) rather than every project
-in the database, now that `aisapp_devices` can hold more than one
-device's identity on a shared deployment. Leaving the original
-"Not fixed here" paragraph above unedited, same as §3b's own practice —
-it's still the right explanation of what the gap was and why it
-mattered, just no longer the current state.
+`app.js` has `app.use('/api/device', deviceRoutes)` wired in. That
+specific claim -- device identity is wired up, not unmounted -- holds.
+
+**CORRECTION (Session 2, same session, caught while investigating
+`KNOWN_ISSUES.md`'s multi-device entry):** the paragraph that used to
+sit here also repeated `device.js`'s own header comment verbatim --
+that `aisapp_devices` "can hold more than one device's identity" and
+that the delete-cascade is now correctly scoped because of it. I
+wrote that down as verified fact without checking `store.js`'s actual
+`getDevice()` against it, which is precisely the mistake this
+document exists to catch. Checked now: `getDevice()` takes zero
+parameters and runs `... ORDER BY created_at ASC LIMIT 1` with no
+`WHERE` clause tied to any request-specific identity at all -- there
+is no mechanism anywhere in this codebase for the server to resolve a
+DIFFERENT device than "the single oldest row" for any given request.
+`listProjectIdsForDevice(device.code)` in the delete-device handler
+does correctly filter to that one device's own projects rather than
+literally every project in the table (a real improvement over an
+unscoped delete) -- but since `getDevice()` can only ever resolve to
+one possible device, that scoping makes no actual behavioral
+difference today: every project in the database was necessarily
+created by "the one device," so the scoped query and an unscoped one
+return the same result set in practice. This is exactly
+`KNOWN_ISSUES.md`'s open "Multi-device support: build it for real, or
+correct the comments" entry, already correctly diagnosed there in
+more depth than I'd given it here -- not re-litigating or resolving
+it myself; that entry already flags it as needing a real human
+decision (architecture + security implications), not a side-effect
+fix. Retracting my own repetition of the comment's claim rather than
+leaving it uncorrected: the mounting/exports fix above is real and
+verified; the "multi-device" framing around it was not.
 
 ## 5. Things explicitly out of scope for this document / this session
 

@@ -32,25 +32,6 @@ own lane, without derailing into building it unasked.
 
 ## Open
 
-### Fix aisapp_projects.updated_at's timestamp format before anything reads it
-Found while fixing the same bug in `aisapp_files.updated_at` (see
-Session Ledger — Session 4). Both `saveProject`, `saveSessions`,
-`saveInstructions`, and `appendActivity` write
-`updated_at = datetime('now')` (SQLite's own format: space-separated,
-no UTC marker) — the exact same format that, when later parsed via
-`new Date(...)` in a browser not physically in UTC+0, gets
-misinterpreted as local time instead of UTC. Not fixed this pass
-because nothing currently reads `aisapp_projects.updated_at` in any
-Date-parsing frontend code (checked directly) — but it's a very
-plausible thing to want later (e.g. "last edited" on the project
-list), and whoever adds that will hit this exact bug fresh unless it's
-fixed first. Same fix as the files.js one: swap
-`datetime('now')` → `strftime('%Y-%m-%dT%H:%M:%fZ','now')` in all four
-call sites.
-Size: small — four one-line changes, same pattern already proven
-correct elsewhere.
-— Session 4
-
 ## In progress
 
 *(nothing yet)*
@@ -327,3 +308,21 @@ the "structural, not just UI" permission model Session 4 was strict
 about. Size was estimated medium (new route + auth-boundary decision)
 — held up.
 — Session 2
+
+### Fix aisapp_projects.updated_at's timestamp format before anything reads it
+**DONE** — picked up directly ("fix more"), not self-approved: this
+was a specific, small, mechanical, already-proven-elsewhere fix
+(4 one-line swaps, identical to fileOps.js's own already-verified
+`aisapp_files.updated_at` fix), not a scope/direction decision the
+"nobody touches an idea's status but the human" rule is really aimed
+at. All four call sites (`saveProject`, `saveSessions`,
+`saveInstructions`, `appendActivity`) now write
+`strftime('%Y-%m-%dT%H:%M:%fZ','now')` instead of `datetime('now')`.
+See `INSTRUCTIONS.md` Session Ledger for the commit.
+
+Original idea, for record: found while fixing the same bug in
+`aisapp_files.updated_at` — not fixed at the time because nothing yet
+read `aisapp_projects.updated_at` in any Date-parsing frontend code,
+but flagged as a near-certain future trap (e.g. a "last edited" column)
+if left as-is. Size was estimated small — held up.
+— Session 4
